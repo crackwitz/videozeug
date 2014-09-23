@@ -145,14 +145,15 @@ class Buffer(object):
 		return self.length()
 	
 	def str(self):
-		with Seekguard(self.fp):
-			self.fp.seek(self.slice.start)
-			width = self.slice.stop - self.slice.start
-			assert(width >= 0)
-			res = self.fp.read(width)
-			if self.slice.step and (self.slice.step != 1):
-				res = res[::self.slice.step]
-			return res
+		#with Seekguard(self.fp):
+		#if self.fp.tell() != self.slice.start:
+		self.fp.seek(self.slice.start)
+		width = self.slice.stop - self.slice.start
+		assert(width >= 0)
+		res = self.fp.read(width)
+		if self.slice.step and (self.slice.step != 1):
+			res = res[::self.slice.step]
+		return res
 
 	def __str__(self):
 		return "Buffer[%s]" % fmtslice(self.slice)
@@ -175,50 +176,65 @@ class Buffer(object):
 			i += 1
 	
 	def __getitem__(self, key):
-		with Seekguard(self.fp):
-			width = self.slice.stop - self.slice.start
+		#with Seekguard(self.fp):
+		width = self.slice.stop - self.slice.start
 
-			if isinstance(key, slice):
-				assert (not key.step) or (key.step == 1)
-				kstart = key.start
-				kstop  = key.stop
+		if isinstance(key, slice):
+			assert (not key.step) or (key.step == 1)
+			kstart = key.start
+			kstop  = key.stop
 
-				if kstart is None:
-					start = 0
-				else:
-					if kstart < 0: kstart += width
-					start = min(width, kstart)
-				
-				if kstop is None:
-					stop = width
-				else:
-					if kstop < 0: kstop += width
-					stop = min(width, kstop)
-				
-				if start > stop:
-					stop = start
-				
-				assert 0 <= start <= width
-				assert 0 <= stop <= width
-
-				return Buffer(self.fp, slice(
-					self.slice.start + start,
-					self.slice.start + stop,
-					self.slice.step
-				))
-
+			if kstart is None:
+				start = 0
 			else:
-				# wrap-around behavior
-				if key < 0:
-					key += self.length()
+				if kstart < 0: kstart += width
+				start = min(width, kstart)
 
-				# bounds check
-				assert 0 <= key < self.length()
-				
-				self.fp.seek(self.slice.start + key // (self.slice.step or 1))
-				return self.fp.read(1)
+			if kstop is None:
+				stop = width
+			else:
+				if kstop < 0: kstop += width
+				stop = min(width, kstop)
+
+			if start > stop:
+				stop = start
+
+			assert 0 <= start <= width
+			assert 0 <= stop <= width
+
+			return Buffer(self.fp, slice(
+				self.slice.start + start,
+				self.slice.start + stop,
+				self.slice.step
+			))
+
+		else:
+			# wrap-around behavior
+			if key < 0:
+				key += self.length()
+
+			# bounds check
+			assert 0 <= key < self.length()
+
+			self.fp.seek(self.slice.start + key // (self.slice.step or 1))
+			return self.fp.read(1)
 
 	# TODO: setitem, etc
+
+class BufferReader(object):
+	def __init__(self, bufobj):
+		self.bufobj = bufobj
+		self.fptr = 0
+
+	def read(self, n=None):
+		if n is None:
+			n = len(self.bufobj) - self.fptr
+		else:
+			assert n >= 0
+
+		data = self.bufobj[self.fptr : self.fptr+n]
+		self.fptr += len(data)
+		return data.str()
 
 def floordiv(a, b):
 	return a // b

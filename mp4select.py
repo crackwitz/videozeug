@@ -3,9 +3,10 @@
 import os
 import sys
 import struct
+import shutil
 import re
 
-from filetools import Buffer, FileBuffer
+from filetools import Buffer, FileBuffer, BufferReader
 
 (selector, fname) = sys.argv[1:]
 
@@ -27,10 +28,13 @@ for step in steps:
 
 	# walk atoms
 	start = stop = 0
+	found = False
 	while stop < len(buf):
 		start = stop
 		(alen,acode) = struct.unpack(">I4s", buf[start:start+8].str())
 		contentoffset = 8
+
+		# 64-bit atom sizes
 		if alen == 1:
 			contentoffset = 16
 			(alen,) = struct.unpack(">Q", buf[start+8:start+16].str())
@@ -41,9 +45,15 @@ for step in steps:
 		content = buf[start+contentoffset : stop]
 
 		if spos == 0:
+			found = True
 			buf = content
 			break
 		else:
 			spos -= 1
 
-sys.stdout.write(buf.str())
+	assert found, "atoms exhausted; no match found"
+
+try:
+	shutil.copyfileobj(BufferReader(buf), sys.stdout)
+except IOError, e:
+	pass # probably just closed the pipe early
