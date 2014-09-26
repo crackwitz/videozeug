@@ -1,11 +1,10 @@
 #!/usr/bin/env python
 from __future__ import division
-import os
-import sys
 import re
 import pprint; pp = pprint.pprint
 import lxml.etree as etree
-import json
+
+__all__ = ['extract', 'timefmt', 'nsmap']
 
 # http://effbot.org/zone/element-namespaces.htm
 # http://lxml.de/tutorial.html#using-xpath-to-find-text
@@ -36,49 +35,61 @@ def timefmt(seconds):
 
 # ======================================================================
 
-data = {}
+def extract(xmpdata):
+	assert isinstance(xmpdata, str) or isinstance(xmpdata, file)
 
-(fname,) = sys.argv[1:]
+	data = {}
 
-if fname == '-':
-	tree = etree.parse(sys.stdin)
-else:
-	tree = etree.parse(fname)
-
-(duration,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:value', namespaces=nsmap)
-(timescale,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:scale', namespaces=nsmap)
-m = re.match(r'^(\d+)/(\d+)$', timescale)
-(num,denom) = m.groups()
-duration = int(duration) * int(num) / int(denom)
-
-data['duration'] = duration
-
-(denom,) = tree.xpath(".//rdf:Description[@xmpDM:trackName='Markers']/@xmpDM:frameRate", namespaces=nsmap)
-m = re.match(r'f(\d+)', denom)
-markerframerate = int(m.group(1))
-
-chapters = []
-
-for node in tree.xpath("//xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
-	(itemtype,) = node.xpath("./@xmpDM:type", namespaces=nsmap)
-	assert itemtype == "Chapter"
+	tree = etree.parse(xmpdata)
 	
-	(chaptername,) = node.xpath("./@xmpDM:name", namespaces=nsmap)
-	(starttime,) = node.xpath("./@xmpDM:startTime", namespaces=nsmap)
-	(duration,) = node.xpath("./@xmpDM:duration", namespaces=nsmap)
-	starttime = int(starttime) / markerframerate
-	duration = int(duration) / markerframerate
+	(duration,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:value', namespaces=nsmap)
+	(timescale,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:scale', namespaces=nsmap)
+	m = re.match(r'^(\d+)/(\d+)$', timescale)
+	(num,denom) = m.groups()
+	duration = int(duration) * int(num) / int(denom)
+
+	data['duration'] = duration
+
+	(denom,) = tree.xpath(".//rdf:Description[@xmpDM:trackName='Markers']/@xmpDM:frameRate", namespaces=nsmap)
+	m = re.match(r'f(\d+)', denom)
+	markerframerate = int(m.group(1))
+
+	chapters = []
+
+	for node in tree.xpath("//xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
+		(itemtype,) = node.xpath("./@xmpDM:type", namespaces=nsmap)
+		assert itemtype == "Chapter"
+		
+		(chaptername,) = node.xpath("./@xmpDM:name", namespaces=nsmap)
+		(starttime,) = node.xpath("./@xmpDM:startTime", namespaces=nsmap)
+		(duration,) = node.xpath("./@xmpDM:duration", namespaces=nsmap)
+		starttime = int(starttime) / markerframerate
+		duration = int(duration) / markerframerate
+		
+		#print "Kapitel:", chaptername
+		#print "    Start %s, Laenge %s" % (timefmt(starttime), timefmt(duration))
+		#print
+
+		chapters.append({
+			'name': chaptername,
+			'start': starttime,
+			'duration': duration
+		})
+
+	data['chapters'] = chapters
+
+	return data
+
+
+if __name__ == '__main__':
+	import os
+	import sys
+	import json
 	
-	#print "Kapitel:", chaptername
-	#print "    Start %s, Laenge %s" % (timefmt(starttime), timefmt(duration))
-	#print
+	(fname,) = sys.argv[1:]
 
-	chapters.append({
-		'name': chaptername,
-		'start': starttime,
-		'duration': duration
-	})
+	xmpdata = sys.stdin if (fname == '-') else fname
 
-data['chapters'] = chapters
-
-print json.dumps(data, sort_keys=True, indent=1)
+	data = extract(xmpdata)
+	
+	print json.dumps(data, sort_keys=True, indent=1)
