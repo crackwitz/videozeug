@@ -498,10 +498,16 @@ for fname in fnames:
 	if status == 0:
 		print "file looks okay"
 		#print
-	
-	# clean up previous statuses
-	for x in glob.glob(os.path.abspath(fname) + sig + '*'):
-		os.unlink(x)
+
+	try:	
+		# clean up previous statuses
+		for x in glob.glob(os.path.abspath(fname) + sig + '*'):
+			os.unlink(x)
+	except OSError, e:
+		if e.errno == 13:
+			print "could not clean up check result files"
+		else:
+			raise
 	
 	# write new status
 	x = os.path.abspath(fname) + sig + " result %s" % statuses[status]
@@ -515,7 +521,10 @@ for fname in fnames:
 				fh.write('%s: %s\n' % (exception.__class__.__name__, exception))
 		os.chmod(x, 0664)
 	except IOError, e:
-		print "IOError", e
+		if e.errno == 13:
+			print "could not write check result file"
+		else:
+			raise
 	
 	if len(fnames) == 1:
 		sys.exit(status)
