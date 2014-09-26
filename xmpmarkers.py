@@ -36,7 +36,7 @@ def timefmt(seconds):
 # ======================================================================
 
 def extract(xmpdata):
-	assert isinstance(xmpdata, str) or isinstance(xmpdata, file)
+	assert isinstance(xmpdata, str) or hasattr(xmpdata, 'read')
 
 	data = {}
 
