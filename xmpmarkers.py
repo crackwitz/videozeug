@@ -49,8 +49,7 @@ else:
 (timescale,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:scale', namespaces=nsmap)
 m = re.match(r'^(\d+)/(\d+)$', timescale)
 (num,denom) = m.groups()
-timescale = int(num) / int(denom)
-duration = int(duration) * timescale
+duration = int(duration) * int(num) / int(denom)
 
 data['duration'] = duration
 
