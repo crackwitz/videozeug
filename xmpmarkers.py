@@ -36,12 +36,23 @@ def timefmt(seconds):
 
 # ======================================================================
 
+data = {}
+
 (fname,) = sys.argv[1:]
 
 if fname == '-':
 	tree = etree.parse(sys.stdin)
 else:
 	tree = etree.parse(fname)
+
+(duration,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:value', namespaces=nsmap)
+(timescale,) = tree.xpath('//rdf:RDF/rdf:Description/xmpDM:duration/@xmpDM:scale', namespaces=nsmap)
+m = re.match(r'^(\d+)/(\d+)$', timescale)
+(num,denom) = m.groups()
+timescale = int(num) / int(denom)
+duration = int(duration) * timescale
+
+data['duration'] = duration
 
 (denom,) = tree.xpath(".//rdf:Description[@xmpDM:trackName='Markers']/@xmpDM:frameRate", namespaces=nsmap)
 m = re.match(r'f(\d+)', denom)
@@ -69,6 +80,6 @@ for node in tree.xpath("//xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
 		'duration': duration
 	})
 
-data = {'chapters': chapters}
+data['chapters'] = chapters
 
 print json.dumps(data, sort_keys=True, indent=1)
