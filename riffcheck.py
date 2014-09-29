@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 # written by christoph.rackwitz@gmail.com
 
 # http://www.kk.iij4u.or.jp/~kondo/wave/mpidata.txt
