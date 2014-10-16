@@ -51,6 +51,10 @@ if len(sys.argv) != 4:
 	print
 	print "Usage: ffmeta.py [ffmeta|jumplist] <infile> <outfile>"
 	print "       infile and outfile may be '-' for stdin and stdout respectively"
+	print
+	print "Usage in avconv and ffmpeg:"
+	print "       avconv -i video.mp4 -i metafile -map_metadata 1 -c copy video-and-markers.mp4"
+
 	sys.exit(0)
 
 # input
