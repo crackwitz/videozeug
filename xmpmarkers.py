@@ -46,6 +46,7 @@ def xmpfrac(s):
 
 def xpath_value(tree, path, dtype=None):
 	res = tree.xpath(path, namespaces=nsmap)
+	if len(res) != 1: return None
 	(value,) = res
 	return dtype(value) if (dtype is not None) else value
 
@@ -87,17 +88,24 @@ def extract(xmpdata):
 	### GET CHAPTER MARKERS
 	chapters = []
 	for node in markernode.xpath("./xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
+		# this is for CC 2013 formats
+		descr = node.xpath("./rdf:Description", namespaces=nsmap)
+		if descr: (node,) = descr
+		
 		itemtype = xpath_value(node, "./@xmpDM:type")
 		assert itemtype == "Chapter"
 		
 		chaptername = xpath_value(node, "./@xmpDM:name")
-		starttime = xpath_value(node, "./@xmpDM:startTime", int) * markerframerate
-		duration = xpath_value(node, "./@xmpDM:duration", int) * markerframerate
+		
+		starttime = float(xpath_value(node, "./@xmpDM:startTime", int) * markerframerate)
+		
+		duration = xpath_value(node, "./@xmpDM:duration", int)
+		if duration is not None: duration = float(duration * markerframerate)
 		
 		chapters.append({
 			'name': chaptername,
-			'start': float(starttime),
-			'duration': float(duration)
+			'start': starttime,
+			'duration': duration
 		})
 
 	data['chapters'] = chapters
