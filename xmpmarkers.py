@@ -93,7 +93,8 @@ def extract(xmpdata):
 		if descr: (node,) = descr
 		
 		itemtype = xpath_value(node, "./@xmpDM:type")
-		assert itemtype == "Chapter"
+		if itemtype != "Chapter":
+			continue
 		
 		chaptername = xpath_value(node, "./@xmpDM:name")
 		
