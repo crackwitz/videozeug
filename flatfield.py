@@ -43,8 +43,12 @@ def read_frame(vid):
 		
 	return sub
 
+# TODO: gamma-aware average
+gamma = 2.2
+
 (fname,) = sys.argv[1:]
 
+# TODO: different decoder, different color space
 vid = cv2.VideoCapture(fname)
 framecache = Framecache(read_frame(vid))
 nframes = vid.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT)
@@ -196,6 +200,8 @@ while True:
 		read_marks()
 
 	if key == ord('r'):
+		fbase = os.path.splitext(fname)[0]
+
 		blackframe = np.zeros((frameh,framew,3), np.float32)
 		blackcount = 0
 		whiteframe = np.zeros((frameh,framew,3), np.float32)
@@ -221,7 +227,6 @@ while True:
 		hival = 2**16 - 1
 		valtype = np.uint16
 		
-		fbase = os.path.splitext(fname)[0]
 		cv2.imwrite(fbase + "-black.png", valtype(np.clip(0.0 + blackframe*hival, 0, hival)))
 		cv2.imwrite(fbase + "-white.png", valtype(np.clip(0.0 + whiteframe*hival, 0, hival)))
 		cv2.imwrite(fbase + "-range.png", valtype(np.clip(0.0 + rangeframe*hival, 0, hival)))
