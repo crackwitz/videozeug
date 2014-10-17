@@ -9,6 +9,7 @@ import array
 import ctypes
 from funcs import *
 from filetools import *
+import trecformat
 
 # ======================================================================
 # MP4/MOV constants
@@ -338,6 +339,27 @@ def parse_data(type, blockoffset, content, indent):
 		content = content[p:].str()
 	)
 
+def UUID(buffer):
+	s = str(buffer).encode('hex')
+	return "%s-%s-%s-%s-%s" % (s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
+
+@handler('uuid', 'DATA')
+def parse_uuid(type, blockoffset, content, indent):
+	(uuid,) = struct.unpack('>16s', content[:16].str())
+	
+	uuid = UUID(uuid)
+	
+	result = Record(
+		uuid = uuid,
+		content = content[16:]
+	)
+	
+	if uuid.endswith('11e2-83d0-0017f200be7f'):
+		result = trecformat.parse_TSCMDATA(result.uuid, result.content)
+	
+	return result
+
+
 #@handler('mvhd')
 #def parse_mvhd(type, blockoffset, content, indent):
 	#	u8  version;
@@ -388,7 +410,7 @@ def parse_ilst(type, blockoffset, block, indent):
 	
 	return res
 
-@handler(None, 'moov', 'trak', 'edts', 'mdia', 'minf', 'stbl', 'udta')
+@handler(None, 'moov', 'trak', 'edts', 'mdia', 'minf', 'stbl', 'udta', 'TSCM')
 def parse_sequence(type, blockoffset, block, indent=0):
 	start = 0
 	
