@@ -29,10 +29,10 @@ def write_ffdata(chapters, outfile=sys.stdout):
 		print >> outfile, "title=%s" % escape_data(chapter['name'])
 		print >> outfile
 
-def hmsformat(seconds):
+def hmsformat(seconds, decimals=0):
 	hours, seconds = divmod(seconds, 3600)
 	minutes, seconds = divmod(seconds, 60)
-	return "%d:%02d:%02d" % (hours, minutes, seconds)
+	return "%d:%02d:%0*.*f" % (hours, minutes, 2+decimals+(decimals>0), decimals, seconds)
 
 def write_jumplist(chapters, outfile=sys.stdout):
 	for chapter in chapters:
@@ -44,12 +44,25 @@ def dictmerge(d1, d2):
 		res[k] = d2[k]
 	return res
 
+def write_webvtt(chatpers, outfile=sys.stdout):
+	print >> outfile, "WEBVTT"
+	print >> outfile
+
+	for chapter in chapters:
+		# cue identifier is optional
+		print >> outfile, "%s --> %s" % (
+			hmsformat(chapter['start'], decimals=3),
+			hmsformat(chapter['start'] + chapter['duration'], decimals=3),
+		)
+		print >> outfile, chapter['name'].encode("utf-8")
+		print >> outfile
+
 # ----------------------------------------------------------------------
 
 if len(sys.argv) != 4:
 	print "Takes XMP marker data in JSON and outputs human-readable data or suitable for ffmpeg"
 	print
-	print "Usage: ffmeta.py [ffmeta|jumplist] <infile> <outfile>"
+	print "Usage: ffmeta.py [ffmeta|jumplist|webvtt] <infile> <outfile>"
 	print "       infile and outfile may be '-' for stdin and stdout respectively"
 	print
 	print "Usage in avconv and ffmpeg:"
@@ -78,6 +91,8 @@ if outtype in ['ffmeta', 'ffmetadata']:
 	write_ffdata(chapters, outfile)
 elif outtype == 'jumplist':
 	write_jumplist(chapters, outfile)
+elif outtype == 'webvtt':
+	write_webvtt(chapters, outfile)
 else:
 	assert False, "%s is not an output format. try 'ffmeta' or 'jumplist'" % repr(outtype)
 
