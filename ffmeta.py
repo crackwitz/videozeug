@@ -77,7 +77,7 @@ xmpdata = sys.stdin if (xmpdata == '-') else open(xmpdata)
 outfile = sys.stdout if (outfile == '-') else open(outfile, 'w')
 
 xmpdata = json.load(xmpdata)
-chapters = xmpdata['chapters']
+chapters = xmpdata.get('chapters', [])
 
 # fix chapter lengths
 starts = [c['start'] for c in chapters] + [xmpdata['duration']]
