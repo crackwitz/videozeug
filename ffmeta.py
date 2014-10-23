@@ -59,40 +59,41 @@ def write_webvtt(chatpers, outfile=sys.stdout):
 
 # ----------------------------------------------------------------------
 
-if len(sys.argv) != 4:
-	print "Takes XMP marker data in JSON and outputs human-readable data or suitable for ffmpeg"
-	print
-	print "Usage: ffmeta.py [ffmeta|jumplist|webvtt] <infile> <outfile>"
-	print "       infile and outfile may be '-' for stdin and stdout respectively"
-	print
-	print "Usage in avconv and ffmpeg:"
-	print "       avconv -i video.mp4 -i metafile -map_metadata 1 -c copy video-and-markers.mp4"
+if __name__ == '__main__':
+	if len(sys.argv) != 4:
+		print "Takes XMP marker data in JSON and outputs human-readable data or suitable for ffmpeg"
+		print
+		print "Usage: ffmeta.py [ffmeta|jumplist|webvtt] <infile> <outfile>"
+		print "       infile and outfile may be '-' for stdin and stdout respectively"
+		print
+		print "Usage in avconv and ffmpeg:"
+		print "       avconv -i video.mp4 -i metafile -map_metadata 1 -c copy video-and-markers.mp4"
 
-	sys.exit(0)
+		sys.exit(0)
 
-# input
-(outtype, xmpdata, outfile) = sys.argv[1:]
+	# input
+	(outtype, xmpdata, outfile) = sys.argv[1:]
 
-xmpdata = sys.stdin if (xmpdata == '-') else open(xmpdata)
-outfile = sys.stdout if (outfile == '-') else open(outfile, 'w')
+	xmpdata = sys.stdin if (xmpdata == '-') else open(xmpdata)
+	outfile = sys.stdout if (outfile == '-') else open(outfile, 'w')
 
-xmpdata = json.load(xmpdata)
-chapters = xmpdata.get('chapters', [])
+	xmpdata = json.load(xmpdata)
+	chapters = xmpdata.get('chapters', [])
 
-# fix chapter lengths
-starts = [c['start'] for c in chapters] + [xmpdata['duration']]
-chapters = [
-	dictmerge(c, {'duration': end - c['start']})
-	for c,end in zip(chapters, starts[1:])
-]
+	# fix chapter lengths
+	starts = [c['start'] for c in chapters] + [xmpdata['duration']]
+	chapters = [
+		dictmerge(c, {'duration': end - c['start']})
+		for c,end in zip(chapters, starts[1:])
+	]
 
-# output
-if outtype in ['ffmeta', 'ffmetadata']:
-	write_ffdata(chapters, outfile)
-elif outtype == 'jumplist':
-	write_jumplist(chapters, outfile)
-elif outtype == 'webvtt':
-	write_webvtt(chapters, outfile)
-else:
-	assert False, "%s is not an output format. try 'ffmeta' or 'jumplist'" % repr(outtype)
+	# output
+	if outtype in ['ffmeta', 'ffmetadata']:
+		write_ffdata(chapters, outfile)
+	elif outtype == 'jumplist':
+		write_jumplist(chapters, outfile)
+	elif outtype == 'webvtt':
+		write_webvtt(chapters, outfile)
+	else:
+		assert False, "%s is not an output format. try 'ffmeta' or 'jumplist'" % repr(outtype)
 
