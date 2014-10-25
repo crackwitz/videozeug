@@ -14,17 +14,31 @@ steps = [step for step in selector.split('/') if step]
 
 buf = FileBuffer(fname)
 
+crumbrex = re.compile(r'''
+	(?P<code>\w+?)
+	(?:(?P<prefix>[:$]\w+))?
+	(?:\[(?P<index>\d+)\])?
+	$
+''', re.VERBOSE)
+
 for step in steps:
 	if step[0] in "+": # move back/forth
 		offset = int(step)
 		buf = buf[offset:]
 		continue
 
-	m = re.match(r'(\w+)(?:\[(\d+)\])?$', step)
+	m = crumbrex.match(step)
 	assert m
-	(scode,spos) = m.groups()
+	scode = m.group('code')
+	spos = m.group('index')
+	prefix = m.group('prefix')
+
 	assert len(scode) <= 4, "implausible code requested"
 	spos = int(spos) if (spos is not None) else 0
+	if prefix:
+		assert prefix[0] in ':$'
+		if prefix[0] == '$': prefix = prefix[1:].decode('hex')
+		elif prefix[0] == ':': prefix = prefix[1:]
 
 	# walk atoms
 	start = stop = 0
@@ -43,6 +57,9 @@ for step in steps:
 		if acode != scode: continue
 
 		content = buf[start+contentoffset : stop]
+
+		if prefix and (content[:len(prefix)].str() != prefix):
+			continue
 
 		if spos == 0:
 			found = True
