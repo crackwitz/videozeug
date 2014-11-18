@@ -94,6 +94,7 @@ class MarkerList(object):
 
 fourcc = cv2.cv.FOURCC(*"MJPG")
 fourcc = -1
+fourcc = cv2.cv.FOURCC(*"LAGS")
 #fourcc = cv2.cv.FOURCC(*"TSCC")
 fps = 25
 #duration = 5400.0
@@ -103,6 +104,11 @@ minlastslide = 300.0
 #framesize = (1280,960)
 
 # collecting parameters
+
+headless = False
+if sys.argv[1] == '-headless':
+	del sys.argv[1]
+	headless = True
 
 fvideo = sys.argv[1]
 
@@ -137,8 +143,9 @@ fstart = 0
 #fstart = int(4500 * fps)
 fend   = int(duration * fps)
 
-cv2.namedWindow("display", cv2.WINDOW_NORMAL)
-cv2.resizeWindow("display", 800, 600)
+if not headless:
+	cv2.namedWindow("display", cv2.WINDOW_NORMAL)
+	cv2.resizeWindow("display", 800, 600)
 
 print
 
@@ -168,20 +175,21 @@ try:
 		
 		vid.write(im)
 		
-		if do_update:
+		if do_update and not headless:
 			cv2.imshow("display", im)
 			
 		if fno % fps == 0:
 			sys.stdout.write("\r%5.1f%% @ %.2f secs..." % (100 * now / duration, now))
 			sys.stdout.flush()
 
-			keys = list(waitKeys())
-			if 27 in keys:
-				print "aborted"
-				raise KeyboardInterrupt
-			
-			elif keys:
-				print "waitkey ->", keys
+			if not headless:
+				keys = list(waitKeys())
+				if 27 in keys:
+					print "aborted"
+					raise KeyboardInterrupt
+
+				elif keys:
+					print "waitkey ->", keys
 	
 	# fix for lagarith nullframes and playback.
 	# this should force one last keyframe.
@@ -203,6 +211,7 @@ except:
 	raise
 
 finally:
-	cv2.destroyWindow("display")
+	if not headless:
+		cv2.destroyWindow("display")
 	vid.release()
 	
