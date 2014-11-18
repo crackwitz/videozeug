@@ -94,9 +94,6 @@ class Atom(object):
 				if isinstance(self.content, list):
 					for i,item in enumerate(self.content):
 						if isinstance(item, Atom):
-#							if item.type == 'skip':
-#								import pdb
-#								pdb.set_trace()
 							res.append(item.__repr__(indent+1, index=i))
 						else:
 							res.append(blockindent(indent+1, ('[%d] ' % (i+1)) + repr(item) + "\n"))
