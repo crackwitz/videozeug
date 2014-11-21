@@ -2,8 +2,13 @@
 :: found via http://stackoverflow.com/questions/1192476/format-date-and-time-in-a-windows-batch-script
 
 @ECHO OFF
+setlocal EnableExtensions EnableDelayedExpansion
 
 :: parameters
+
+set codec=qtrle
+::set codec=libx264
+
 set framerate=25
 
 set keysecs=60
@@ -20,6 +25,10 @@ set top=0
 
 :paramloop
 if not "%1"=="" (
+	if "%1"=="-codec" (
+		set codec=%2
+		shift
+	)
 	if "%1"=="-framerate" (
 		set framerate=%2
 		shift
@@ -104,11 +113,35 @@ if %usewindowtitle%==1 (
 
 set /a "keyint=keysecs*framerate"
 
-echo frame rate: %framerate% fps
-echo size: %sizereport%
-echo position: %left% x %top%
-echo input: %input%
-echo writing to %FILENAME%
+:: codec "qtrle" (default)
+
+:setcodec
+set encoptsset=0
+set encopts=
+
+if "%codec%"=="qtrle" (
+	set encopts=-c:v qtrle
+	set encoptsset=1
+	echo Encoder: Quicktime Animation (qtrle)
+)
+if "%codec%"=="x264" (
+	set encopts=-c:v libx264 -preset:v fast -tune:v stillimage -tune:v zerolatency -crf 0
+	set encoptsset=1
+	echo Encoder: H.264 (libx264)
+)
+
+if %encoptsset%==0 (
+	echo WARNING: unknown codec %codec% specified!
+	set codec=qtrle
+	goto setcodec
+)
+
+
+echo Frame rate: %framerate% fps
+echo Image size: %sizereport%
+echo Position: %left% x %top%
+echo Input: %input%
+echo Writing to %FILENAME%
 echo CWD:
 echo   %cd%
 
@@ -122,5 +155,5 @@ echo.
 ::  -video_size 1920x1200
 ::ffmpeg  -f gdigrab -r 10 -i desktop -pix_fmt yuv444p -c:v libx264 -preset:v baseline -preset:v ultrafast -tune:v stillimage -tune:v zerolatency -crf 0 %FILENAME%
 
-ffmpeg -f gdigrab -framerate %framerate% %sizeopt% -offset_x %left% -offset_y %top% -i %input% -c:v qtrle -g %keyint% %FILENAME%
+ffmpeg -f gdigrab -framerate %framerate% %sizeopt% -offset_x %left% -offset_y %top% -i %input% %encopts% -g %keyint% %FILENAME%
 
