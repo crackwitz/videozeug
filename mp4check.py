@@ -486,6 +486,19 @@ def parse_sequence(type, blockoffset, block, indent=0):
 def parse(buffer, offset=0):
 	return handlers[None](None, 0, buffer)
 
+def select(data, path):
+	for edge in path:
+		# find edge
+		for atom in data:
+			if atom.type == edge:
+				break
+		else:
+			assert False, "edge %s not found at this place in the tree" % repr(edge)
+		
+		data = atom.content
+	
+	return data
+
 # ======================================================================
 
 verbose = False
