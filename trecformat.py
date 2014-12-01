@@ -97,6 +97,11 @@ def map_f8f9(block):
 		text = text,
 	)
 
+@onuuid('2b7b6afa', "looks like speaker notes")
+def map_fa(block):
+	(t,) = struct.unpack("<d", block[0:8].str())
+	return (t, block[8:].str())
+
 # ----------------------------------------------------------------------
 
 def parse_TSCMDATA(uuid, content):
