@@ -7,6 +7,7 @@ import pprint; pp = pprint.pprint
 import glob
 import array
 import ctypes
+import time, datetime, calendar
 from funcs import *
 from filetools import *
 import trecformat
@@ -176,6 +177,46 @@ def parse_elst(type, offset, content, indent):
 			entries
 		),
 	] + children
+
+def mactime(timestamp):
+	epoch = datetime.datetime(1904, 1, 1, 0, 0, 0, 0, )
+	d = epoch + datetime.timedelta(seconds=timestamp)
+	unixtimestamp = calendar.timegm(d.timetuple())
+	return unixtimestamp
+
+@handler('mvhd')
+def parse_mvhd(type, blockoffset, content, indent):
+	res = Record()
+	
+	# http://xhelmboyx.tripod.com/formats/mp4-layout.txt
+	
+	(res.version,) = struct.unpack(">B", content[0:1].str())
+	assert res.version == 1 # dates+durations = u64
+	
+	res.flags = struct.unpack(">3B", content[1:4].str())
+
+	(res.created,) = struct.unpack(">Q", content[4:12].str())
+	res.created = mactime(res.created)
+	(res.modified,) = struct.unpack(">Q", content[12:20].str())
+	res.modified = mactime(res.modified)
+
+	(res.timescale,) = struct.unpack(">I", content[20:24].str())
+	(res.duration,) = struct.unpack(">Q", content[24:32].str())
+
+	(res.prefrate,) = struct.unpack(">I", content[32:36].str())
+	res.prefrate = float(res.prefrate) / 2**16
+
+	(res.prefvol,) = struct.unpack(">H", content[36:38].str())
+	res.prefvol = float(res.prefvol) / 2**8
+	
+	# 10 bytes reserved
+	
+	res.matrix = struct.unpack(">9I", content[48:84].str())
+	res.matrix = [float(v) / 2**16 for v in res.matrix]
+	
+	# 24 bytes reserved
+	
+	return res
 
 @handler('mdhd')
 def parse_mdhd(type, offset, content, indent):
@@ -356,28 +397,6 @@ def parse_uuid(type, blockoffset, content, indent):
 	
 	return result
 
-
-#@handler('mvhd')
-#def parse_mvhd(type, blockoffset, content, indent):
-	#	u8  version;
-	#	u24 flags;
-	#	u32 creation_time; // in mac UTC time, epoch starts 1904 ends 2040, >>> datetime.datetime(1904, 1, 1) + datetime.timedelta(seconds=value)
-	#	u32 modification_time;
-	#	u32 time_scale;
-	#	u32 duration;
-	#	f32 preferred_rate;
-	#	f16 preferred_volume;
-	#	char reserved[10];
-	#	quicktime_matrix_t matrix; (9 * fixed32)
-	#	u32 preview_time;
-	#	u32 preview_duration;
-	#	u32 poster_time;
-	#	u32 selection_time;
-	#	u32 selection_duration;
-	#	u32 current_time;
-	#	u32 next_track_id;
-#	pass
-
 @handler('ilst')
 def parse_ilst(type, blockoffset, block, indent):
 	res = []
@@ -441,7 +460,8 @@ def parse_sequence(type, blockoffset, block, indent=0):
 		if not (content.len == size-contentoffset):
 			raise AtomIncomplete(type, blockoffset+start, blockoffset+start+size, blockoffset+start+contentoffset+content.len)
 
-		print lineindent(indent) + "%s  [@%d + %d]" % (type, blockoffset+start, size)
+		if verbose:
+			print lineindent(indent) + "%s  [@%d + %d]" % (type, blockoffset+start, size)
 		
 		if type in handlers:
 			content = handlers[type](
@@ -468,84 +488,89 @@ def parse(buffer, offset=0):
 
 # ======================================================================
 
-sig = " -- MP4 check"
+verbose = False
 
-statuses = {
-	0: "GOOD",
-	1: "INCOMPLETE",
-	3: "INDEX NOT AT BEGINNING"
-}
-
-fnames = []
-
-#fnames.append('mp4 parsing\\8Juv1MVa-483.mp4')
-#fnames.append('mp4 parsing\\8Juv1MVa-483 - Copy.mp4')
-
-for globbable in sys.argv[1:]:
-	fnames += glob.glob(globbable)
-
-for fname in fnames:
-	assert os.path.isfile(fname)
+if __name__ == '__main__':
+	verbose = True
 	
-	print fname
-	#print
-	
-	fb = FileBuffer(fname)
+	sig = " -- MP4 check"
 
-	status = 0
-	atoms = None
-	exception = None
-	try:
-		atoms = parse(fb)
-	except AtomIncomplete, exception:
-		print exception
-		status = 1
-	
-	# check position of index
-	if atoms:
-		for atom in atoms:
-			if atom.start > 1e6:
-				# no index found below 1 MB
-				status = 3
-				print "index not at beginning of file!"
-				break
+	statuses = {
+		0: "GOOD",
+		1: "INCOMPLETE",
+		3: "INDEX NOT AT BEGINNING"
+	}
 
-			if atom.type == 'moov':
-				# index found, done here
-				break
-	
-	if status == 0:
-		print "file looks okay"
+	fnames = []
+
+	#fnames.append('mp4 parsing\\8Juv1MVa-483.mp4')
+	#fnames.append('mp4 parsing\\8Juv1MVa-483 - Copy.mp4')
+
+	for globbable in sys.argv[1:]:
+		fnames += glob.glob(globbable)
+
+	for fname in fnames:
+		assert os.path.isfile(fname)
+
+		print fname
 		#print
 
-	try:	
-		# clean up previous statuses
-		for x in glob.glob(os.path.abspath(fname) + sig + '*'):
-			os.unlink(x)
-	except OSError, e:
-		if e.errno == 13:
-			print "could not clean up check result files"
-		else:
-			raise
-	
-	# write new status
-	x = os.path.abspath(fname) + sig + " result %s" % statuses[status]
-	try:
-		with open(x, 'w') as fh:
-			if atoms:
-				for i, atom in enumerate(atoms):
-					fh.write(atom.__repr__(index=i))
-					fh.write('\n')
-			if exception:
-				fh.write('%s: %s\n' % (exception.__class__.__name__, exception))
-		os.chmod(x, 0664)
-	except IOError, e:
-		if e.errno == 13:
-			print "could not write check result file"
-		else:
-			raise
-	
-	if len(fnames) == 1:
-		sys.exit(status)
-	
-	print
+		fb = FileBuffer(fname)
+
+		status = 0
+		atoms = None
+		exception = None
+		try:
+			atoms = parse(fb)
+		except AtomIncomplete, exception:
+			print exception
+			status = 1
+
+		# check position of index
+		if atoms:
+			for atom in atoms:
+				if atom.start > 1e6:
+					# no index found below 1 MB
+					status = 3
+					print "index not at beginning of file!"
+					break
+
+				if atom.type == 'moov':
+					# index found, done here
+					break
+
+		if status == 0:
+			print "file looks okay"
+			#print
+
+		try:	
+			# clean up previous statuses
+			for x in glob.glob(os.path.abspath(fname) + sig + '*'):
+				os.unlink(x)
+		except OSError, e:
+			if e.errno == 13:
+				print "could not clean up check result files"
+			else:
+				raise
+
+		# write new status
+		x = os.path.abspath(fname) + sig + " result %s" % statuses[status]
+		try:
+			with open(x, 'w') as fh:
+				if atoms:
+					for i, atom in enumerate(atoms):
+						fh.write(atom.__repr__(index=i))
+						fh.write('\n')
+				if exception:
+					fh.write('%s: %s\n' % (exception.__class__.__name__, exception))
+			os.chmod(x, 0664)
+		except IOError, e:
+			if e.errno == 13:
+				print "could not write check result file"
+			else:
+				raise
+
+		if len(fnames) == 1:
+			sys.exit(status)
+
+		print
