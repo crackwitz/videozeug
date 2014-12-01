@@ -189,32 +189,48 @@ def parse_mvhd(type, blockoffset, content, indent):
 	res = Record()
 	
 	# http://xhelmboyx.tripod.com/formats/mp4-layout.txt
-	
+
 	(res.version,) = struct.unpack(">B", content[0:1].str())
-	assert res.version == 1 # dates+durations = u64
-	
 	res.flags = struct.unpack(">3B", content[1:4].str())
-
-	(res.created,) = struct.unpack(">Q", content[4:12].str())
+	p = 4
+	
+	if res.version == 1:
+		# dates+durations = u64
+		timefmt = ">Q"
+		dp = 8
+	else:
+		timefmt = ">I"
+		dp = 4
+	
+	(res.created,) = struct.unpack(timefmt, content[p:p+dp].str())
 	res.created = mactime(res.created)
-	(res.modified,) = struct.unpack(">Q", content[12:20].str())
+	p += dp
+	(res.modified,) = struct.unpack(timefmt, content[p:p+dp].str())
 	res.modified = mactime(res.modified)
+	p += dp
 
-	(res.timescale,) = struct.unpack(">I", content[20:24].str())
-	(res.duration,) = struct.unpack(">Q", content[24:32].str())
+	(res.timescale,) = struct.unpack(">I", content[p:p+4].str())
+	p += 4
+	(res.duration,) = struct.unpack(timefmt, content[p:p+dp].str())
+	p += dp
 
-	(res.prefrate,) = struct.unpack(">I", content[32:36].str())
+	(res.prefrate,) = struct.unpack(">I", content[p:p+4].str())
 	res.prefrate = float(res.prefrate) / 2**16
+	p += 4
 
-	(res.prefvol,) = struct.unpack(">H", content[36:38].str())
+	(res.prefvol,) = struct.unpack(">H", content[p:p+2].str())
 	res.prefvol = float(res.prefvol) / 2**8
-	
+	p += 2
+
 	# 10 bytes reserved
-	
-	res.matrix = struct.unpack(">9I", content[48:84].str())
+	p += 10
+
+	res.matrix = struct.unpack(">9I", content[p:p+36].str())
 	res.matrix = [float(v) / 2**16 for v in res.matrix]
-	
+	p += 36
+
 	# 24 bytes reserved
+	p += 24
 	
 	return res
 
