@@ -40,53 +40,68 @@ def walk_boxes(buf):
 		p += boxlen
 
 def select(selector, buf):
-	steps = [step for step in re.split('[/.]', selector) if step]
+	if isinstance(selector, list):
+		steps = list(selector)
+	else:
+		steps = [step for step in re.split('[/.]', selector) if step]
 	
-	for step in steps:
-		# move forwards
-		if step[0] in "+":
-			offset = int(step)
-			buf = buf[offset:]
+	if len(steps) == 0:
+		yield buf
+		return
+
+	step = steps.pop(0)
+
+	# move forwards
+	if step[0] in "+":
+		offset = int(step)
+		buf = buf[offset:]
+		
+		for box in select(steps, buf):
+			yield box
+		
+		return
+
+	# filter for something
+	m = crumbrex.match(step)
+	assert m
+	scode = m.group('code')
+	spos = m.group('index')
+	prefix = m.group('prefix')
+
+	assert len(scode) <= 4, "implausible code requested"
+	spos = int(spos) if (spos is not None) else None
+	if prefix:
+		assert prefix[0] in ':$'
+		if prefix[0] == '$': prefix = prefix[1:].decode('hex')
+		elif prefix[0] == ':': prefix = prefix[1:]
+
+	# walk atoms
+	found = False
+	for acode, content in walk_boxes(buf):
+		if acode != scode:
 			continue
 
-		# filter for something
-		m = crumbrex.match(step)
-		assert m
-		scode = m.group('code')
-		spos = m.group('index')
-		prefix = m.group('prefix')
-
-		assert len(scode) <= 4, "implausible code requested"
-		spos = int(spos) if (spos is not None) else 0
 		if prefix:
-			assert prefix[0] in ':$'
-			if prefix[0] == '$': prefix = prefix[1:].decode('hex')
-			elif prefix[0] == ':': prefix = prefix[1:]
-
-		# walk atoms
-		found = False
-		for acode, content in walk_boxes(buf):
-			if acode != scode:
+			if content[:len(prefix)].str() == prefix:
+				pass
+				#content = content[16:] # skip uuid
+			else:
 				continue
 
-			if prefix:
-				if content[:len(prefix)].str() == prefix:
-					pass
-					#content = content[16:] # skip uuid
-				else:
-					continue
-				
-
+		if (spos is not None):
 			if spos == 0:
 				found = True
-				buf = content
+				for box in select(steps, content):
+					yield box
 				break
 			else:
 				spos -= 1
+		else:
+			for box in select(steps, content):
+				yield box
 
+	if spos is not None:
 		assert found, "atoms exhausted; no match found"
-
-	return buf
 
 def dump(buf, outfile):
 	try:
@@ -99,8 +114,7 @@ def dump(buf, outfile):
 if __name__ == '__main__':
 	(selector, fname) = sys.argv[1:]
 
-	buf = FileBuffer(fname)
-
-	buf = select(selector, buf)
-
-	dump(buf, sys.stdout)
+	filebuf = FileBuffer(fname)
+	
+	for box in select(selector, filebuf):
+		dump(box, sys.stdout)
