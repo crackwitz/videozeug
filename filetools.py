@@ -2,6 +2,7 @@ from __future__ import with_statement
 
 import pprint
 import os
+import struct
 
 pp = pprint.pprint
 
@@ -121,19 +122,22 @@ class Buffer(object):
 		start = (start or 0)
 		assert stop is not None
 		assert step in (None, 1)
+		assert start <= stop
 		
 		self.slice = slice(start, stop, None)
 	
-	def length(self):
-		return self.slice.stop - self.slice.start
+	def __len__(self):
+		res = self.slice.stop - self.slice.start
+		assert res >= 0
+		return res
 	
-	len = property(lambda self: self.length())
+	def length(self):
+		return len(self)
+	
+	len = property(lambda self: len(self))
 	
 	start = property(lambda self: self.slice.start)
 	stop = property(lambda self: self.slice.start + len(self))
-	
-	def __len__(self):
-		return self.length()
 	
 	def str(self):
 		#with Seekguard(self.fp):
@@ -168,7 +172,13 @@ class Buffer(object):
 		#with Seekguard(self.fp):
 		width = self.slice.stop - self.slice.start
 
-		if isinstance(key, slice):
+		if isinstance(key, str):
+			fmtlen = struct.calcsize(key)
+			assert fmtlen <= len(self)
+			rv = struct.unpack(key, self[:fmtlen].str())
+			return rv[0] if len(rv) == 1 else rv
+
+		elif isinstance(key, slice):
 			assert (not key.step) or (key.step == 1)
 			kstart = key.start
 			kstop  = key.stop
@@ -196,7 +206,7 @@ class Buffer(object):
 				self.slice.start + stop,
 				None
 			))
-
+		
 		else:
 			# wrap-around behavior
 			if key < 0:
@@ -211,7 +221,18 @@ class Buffer(object):
 	def __setitem__(self, key, newval):
 		width = self.slice.stop - self.slice.start
 		
-		if isinstance(key, slice):
+		if isinstance(key, str):
+			if not isinstance(newval, tuple):
+				newval = (newval,)
+
+			formatted = struct.pack(key, *newval)
+			
+			assert len(formatted) <= len(self)
+			
+			self.fp.seek(self.start)
+			self.fp.write(formatted)
+			
+		elif isinstance(key, slice):
 			kstart = key.start
 			kstop  = key.stop
 			
@@ -252,7 +273,6 @@ class Buffer(object):
 			self.fp.seek(self.slice.start + key)
 			self.fp.write(newval)
 	
-	# TODO: setitem, etc
 
 class BufferReader(object):
 	def __init__(self, bufobj):
@@ -269,13 +289,3 @@ class BufferReader(object):
 		self.fptr += len(data)
 		return data.str()
 
-def floordiv(a, b):
-	return a // b
-
-def ceildiv(a, b):
-	return a // b + (a % b != 0)
-
-def filesize(fp):
-	with Seekguard(fp) as fp:
-		fp.seek(0, os.SEEK_END)
-		return fp.tell()
