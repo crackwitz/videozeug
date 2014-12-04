@@ -4,7 +4,6 @@ import os
 import sys
 import json
 import re
-import struct
 import uuid
 import pprint; pp = pprint.pprint
 
@@ -12,7 +11,17 @@ from lxml import etree
 
 import mp4check
 
-#__all__ = ['']
+# ----------------------------------------------------------------------
+
+# movmark: takes trecmarkers output and patches it into the XMP_ box of a .mov file
+# 
+# the .mov file has to have:
+# * moov.udta.XMP_ box
+# * ... at the end of the file
+# * "Chapters" track in the XMP data
+# 
+# add a *chapter* marker to the mov file within Premiere to make this happen.
+
 
 # ----------------------------------------------------------------------
 # definitions and utils
@@ -172,13 +181,20 @@ if __name__ == '__main__':
 	
 	# this will be written
 	xmpdata = xpacket_start + xmpdata + xmppad(padlen) + xpacket_end
-	
+
+	# only handle 32-bit box lengths
+	assert moovbox.buf[">I"] >= 8
+	assert udtabox.buf[">I"] >= 8
+	assert xmpbox.buf[">I"] >= 8
+	# if 1, a 64 bit value follows the tag
+	# if 0, box extends to end of file
+
 	# patch moov length
-	filebuf[moovbox.start:][:4] = struct.pack(">I", moovbox.length + delta)
+	moovbox.buf[">I"] += delta
 	# patch udta length
-	filebuf[udtabox.start:][:4] = struct.pack(">I", udtabox.length + delta)
+	udtabox.buf[">I"] += delta
 	# patch XMP_ length
-	filebuf[xmpbox.start:][:4] = struct.pack(">I", xmpbox.length + delta)
+	xmpbox.buf[">I"] += delta
 
 	filebuf.fp.seek(xmpbuf.start)
 	filebuf.fp.write(xmpdata)

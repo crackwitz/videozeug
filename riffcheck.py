@@ -319,7 +319,7 @@ def parse_chunk_sequence(chunk, base, block, indent=0):
 		if p + 8 > block.length():
 			raise RIFFIncomplete(None, base+p, base+p+8, base+block.length())
 
-		(type, length) = struct.unpack("4sI", block[p:p+8].str())
+		(type, length) = block[p:p+8]["4sI"]
 		
 		if type == '\x00\x00\x00\x00' and length == 0:
 			raise Exception("@%d expected chunk, found nulls" % p)
@@ -379,7 +379,7 @@ def post_list_adtl(chunk, indent):
 @chunkhandler('labl', 'note')
 def parse_adtl_lablnote(chunk, block, indent):
 	content = block[8:]
-	(name,) = struct.unpack("i", content[0:4].str())
+	name = content[0:4]["i"]
 	data = content[4:].str().rstrip('\x00')
 	chunk.content = odict([('name', name), ('data', data)]) # todo: ordered record?
 
@@ -387,7 +387,7 @@ def parse_adtl_lablnote(chunk, block, indent):
 def parse_adtl_file(chunk, block, indent):
 	content = block[8:]
 	
-	(cuename, medtype) = struct.unpack("II", content[0:8].str())
+	(cuename, medtype) = content[0:8]["II"]
 	chunk.content = Record(
 		_cuename = cuename,
 		_medtype = medtype,
@@ -397,7 +397,7 @@ def parse_adtl_file(chunk, block, indent):
 @chunkhandler('ltxt')
 def parse_adtl_ltxt(chunk, block, indent):
 	content = block[8:]
-	fields = struct.unpack("ii4shhhh", content[0:20].str())
+	fields = content[0:20]["ii4shhhh"]
 	data = content[20:].str()
 	#<dwName:DWORD>
 	#<dwSampleLength:DWORD>
@@ -433,7 +433,7 @@ def parse_adtl_ltxt(chunk, block, indent):
 @chunkhandler('slnt')
 def parse_slnt(chunk, block, indent):
 	content = block[8:]
-	(nsamples,) = struct.unpack("I", content[0:4].str())
+	nsamples = content[0:4]["I"]
 	chunk.content = Record(
 		nsamples=nsamples
 	)
@@ -446,7 +446,7 @@ def parse_rifflist(chunk, block, indent=0):
 	if chunk.length != block.length():
 		raise RIFFIncomplete(chunk.type, chunk.start, chunk.start+chunk.length, chunk.start+block.length())
 	
-	(tag,) = struct.unpack("4s", block[8:12].str())
+	tag = block[8:12].str()
 	
 	chunk.tag = tag
 
@@ -470,7 +470,7 @@ def parse_movi(chunk, block, indent):
 def parse_fmt(chunk, block, indent):
 	content = block[8:]
 
-	common = struct.unpack("hhiih", content[0:14].str())
+	common = content[0:14]["hhiih"]
 
 	format = common[0]
 	data = Record()
@@ -481,7 +481,7 @@ def parse_fmt(chunk, block, indent):
 	data.blockalign = common[4]
 
 	if format == 0x0001: # PCM
-		(bitspersample,) = struct.unpack("h", content[14:16].str())
+		bitspersample = content[14:16]["h"]
 		data.bitspersample = bitspersample
 		data.specific = content[16:]
 	else:
@@ -492,12 +492,12 @@ def parse_fmt(chunk, block, indent):
 @chunkhandler('plst')
 def parse_plst(chunk, block, indent):
 	content = block[8:]
-	(nsegments,) = struct.unpack("I", content[0:4].str())
+	nsegments = content[0:4]["I"]
 	
 	content = content[4:]
 	chunk.content = []
 	for i in xrange(nsegments):
-		(cuename, nsamples, nloops) = struct.unpack("III", content[12*i, 12*(i+1)].str())
+		(cuename, nsamples, nloops) = content[12*i:]["III"]
 		
 		chunk.content.append(
 			Record([('cue', cuename), ('nsamples', nsamples), ('nloops', nloops)])
@@ -515,7 +515,7 @@ def parse_cue(chunk, block, indent):
 	
 	fmt = chunk.root.getchunk('fmt ').content
 	
-	(cuecount,) = struct.unpack("I", content[:4].str())
+	cuecount = content[0:4]["I"]
 	content = content[4:]
 
 	chunk.content = Record()
@@ -526,7 +526,7 @@ def parse_cue(chunk, block, indent):
 		# DWORD  dwChunkStart;
 		# DWORD  dwBlockStart;
 		# DWORD  dwSampleOffset;
-		cue = struct.unpack("II4sIII", content[24*i:24*(i+1)].str())
+		cue = content[24*i:24*(i+1)]["II4sIII"]
 
 		# (1,        0, 'data', 0, 0, 35947872)
 		# (1, 35947872, 'data', 0, 0, 35947872)
@@ -583,7 +583,7 @@ def parse_bext(chunk, block, indent):
 	fmtstr = "256s32s32s10s8s" # IIH64sHHHHH180s"
 	fixedlen = struct.calcsize(fmtstr)
 	# supposed to be 602, not 604
-	fixedpart = struct.unpack(fmtstr, content[:fixedlen].str())
+	fixedpart = content[:fixedlen][fmtstr]
 	
 	unknown = content[fixedlen:602] #BYTE   Reserved[180];  /* 180 bytes, reserved for future use, set to "NULL" */ 
 
