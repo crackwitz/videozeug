@@ -1,5 +1,3 @@
-# written by christoph.rackwitz@gmail.com
-
 from __future__ import with_statement
 
 import pprint
@@ -82,17 +80,6 @@ def hexdump(s, offset=0, width=16, sep=4):
 		
 		p += munch
 		q += width
-			
-
-#def hexdump(s, offset=0):
-#	i = offset
-#	n = 0
-#	for i, line in enumerate(nsplit(s, 16)):
-#		print "%04x : %*s | %*s |" % (
-#			16*i + offset,
-#			-3*16-1, ' '.join("%02x" % ord(c) for c in line),
-#			-16,     ''.join(c if (32 <= ord(c) < 128) else '.' for c in line)
-#		)
 
 def int2bin(x, pad=0):
 	res = []
@@ -132,14 +119,18 @@ class Buffer(object):
 		self.fp = fp
 		start, stop, step = range.start, range.stop, range.step
 		start = (start or 0)
-		assert(stop is not None)
+		assert stop is not None
+		assert step in (None, 1)
 		
-		self.slice = slice(start, stop, step)
+		self.slice = slice(start, stop, None)
 	
 	def length(self):
-		return (self.slice.stop - self.slice.start) // (self.slice.step or 1)
+		return self.slice.stop - self.slice.start
 	
 	len = property(lambda self: self.length())
+	
+	start = property(lambda self: self.slice.start)
+	stop = property(lambda self: self.slice.start + len(self))
 	
 	def __len__(self):
 		return self.length()
@@ -151,8 +142,6 @@ class Buffer(object):
 		width = self.slice.stop - self.slice.start
 		assert(width >= 0)
 		res = self.fp.read(width)
-		if self.slice.step and (self.slice.step != 1):
-			res = res[::self.slice.step]
 		return res
 
 	def __str__(self):
@@ -205,7 +194,7 @@ class Buffer(object):
 			return Buffer(self.fp, slice(
 				self.slice.start + start,
 				self.slice.start + stop,
-				self.slice.step
+				None
 			))
 
 		else:
@@ -216,9 +205,53 @@ class Buffer(object):
 			# bounds check
 			assert 0 <= key < self.length()
 
-			self.fp.seek(self.slice.start + key // (self.slice.step or 1))
+			self.fp.seek(self.slice.start + key)
 			return self.fp.read(1)
 
+	def __setitem__(self, key, newval):
+		width = self.slice.stop - self.slice.start
+		
+		if isinstance(key, slice):
+			kstart = key.start
+			kstop  = key.stop
+			
+			if kstart is None:
+				start = 0
+			else:
+				if kstart < 0: kstart += width
+				start = min(width, kstart)
+			
+			if kstop is None:
+				stop = width
+			else:
+				if kstop < 0: kstop += width
+				stop = min(width, kstop)
+			
+			if start > stop:
+				stop = start
+				
+			assert 0 <= start <= width
+			assert 0 <= stop <= width
+			
+			if not isinstance(newval, str):
+				newval = str(newval)
+			assert len(newval) == stop-start
+			
+			self.fp.seek(self.slice.start + start)
+			self.fp.write(newval)
+		
+		else:
+			assert isinstance(newval, str)
+			assert len(newval) == 1
+			
+			if key < 0:
+				k += self.length()
+			
+			assert 0 <= key < self.length()
+			
+			self.fp.seek(self.slice.start + key)
+			self.fp.write(newval)
+	
 	# TODO: setitem, etc
 
 class BufferReader(object):
@@ -246,77 +279,3 @@ def filesize(fp):
 	with Seekguard(fp) as fp:
 		fp.seek(0, os.SEEK_END)
 		return fp.tell()
-		
-class Cached(object):
-	"doesn't improve the situation. OS cache is faster than manual caching"
-
-	def __init__(self, fp, bufsize = 2**14, nbuffers=10):
-		assert(fp.tell() == 0)
-		self.fp = fp
-		self.cache = {}
-		self.bufsize = bufsize
-		self.nbuffers = nbuffers
-		self.pos = 0
-		self.readcount = 0
-		self.filesize = filesize(fp)
-		self.name = fp.name
-	
-	def tell(self):
-		return self.pos
-	
-	def seek(self, offset, whence=os.SEEK_SET):
-		if whence == os.SEEK_SET:
-			self.pos = offset
-		elif whence == os.SEEK_CUR:
-			self.pos = min(self.pos + offset, self.fp.filesize)
-		elif whence == os.SEEK_END:
-			self.pos = self.filesize + offset
-		else:
-			raise Exception("invalid argument for whence!")
-	
-	def _fetch(self, block):
-		if block not in self.cache:
-			self.fp.seek(block * self.bufsize)
-			data = self.fp.read(self.bufsize)
-			self.cache[block] = [0, data]
-		
-		self.readcount += 1
-		self.cache[block][0] = self.readcount
-
-		return self.cache[block][1]
-	
-	def _getrange(self, start, stop):
-		res = []
-
-		a = floordiv(start, self.bufsize)
-		b = ceildiv(stop, self.bufsize)
-		
-		for block in xrange(a, b):
-			data = self._fetch(block)
-			u,v = block*self.bufsize, (block+1)*self.bufsize
-
-			res.append(
-				data[max(0, start-u):min(self.bufsize, stop-u)]
-			)
-
-		assert(sum(map(len, res)) == stop - start)
-
-		self._prunecache()
-		
-		return ''.join(res)
-	
-	def _prunecache(self, maxkilled=2):
-		for i in xrange(maxkilled):
-			if len(self.cache) < self.nbuffers:
-				break
-			del self.cache[min(self.cache, key=(lambda x: self.cache[x][0]))]
-	
-	def read(self, nbytes):
-		res = self._getrange(self.pos, self.pos+nbytes)
-		self.pos += len(res)
-		return res
-
-#if __name__ == '__main__':		
-#	fname = r'Q:\video AG\released\ss08\LA\08ss-LA-080506.avi'
-#	fp = Cached(open(fname, 'rb'))
-#	fb = FileBuffer(fname)
