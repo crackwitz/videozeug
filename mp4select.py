@@ -2,7 +2,6 @@
 
 import os
 import sys
-import struct
 import shutil
 import re
 import pprint; pp = pprint.pprint
@@ -25,12 +24,12 @@ crumbrex = re.compile(r'''
 def walk_boxes(buf):
 	p = 0
 	while p < len(buf):
-		(boxlen, boxcode) = struct.unpack(">I4s", buf[p:p+8].str())
+		(boxlen, boxcode) = buf[p:][">I4s"]
 		contentoffset = 8
 		
 		# 64-bit atom sizes
 		if boxlen == 1:
-			(boxlen,) = struct.unpack(">Q", buf[p+8:p+16].str())
+			boxlen = buf[p+8:][">Q"]
 			contentoffset = 16
 
 		box = buf[p+contentoffset : p+boxlen]

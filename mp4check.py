@@ -58,11 +58,12 @@ def blockindent(n, text):
 	)
 
 class Atom(object):
-	def __init__(self, start, length, type, content=None):
+	def __init__(self, start, length, type, content=None, buf=None):
 		self.start   = start
 		self.length  = length
 		self.type    = type
 		self.content = content
+		self.buf     = buf
 	
 	def __repr__(self, indent=0, index=0):
 		label = self.type
@@ -488,7 +489,7 @@ def parse_sequence(type, blockoffset, block, indent=0):
 				)
 
 		res.append(
-			Atom(blockoffset+start, size, type, content)
+			Atom(blockoffset+start, size, type, content, buf=block[start:start+size])
 			#(type, blockoffset+start, content)
 		)
 
