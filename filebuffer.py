@@ -40,6 +40,7 @@ class BufferReader(object):
 class Buffer(object):
 	def __init__(self, fp, range):
 		self.fp = fp
+		self.pos = 0
 		start, stop, step = range.start, range.stop, range.step
 		start = (start or 0)
 		assert stop is not None
@@ -61,6 +62,32 @@ class Buffer(object):
 	start = property(lambda self: self.slice.start)
 	stop = property(lambda self: self.slice.start + len(self))
 	
+	def reset(self):
+		self.pos = 0
+
+	def read(self, nbytes=None):
+		if nbytes is None:
+			nbytes = len(self) - self.pos
+		else:
+			if self.pos + nbytes > len(self):
+				nbytes = len(self) - self.pos
+
+		assert nbytes >= 0
+		assert self.pos + nbytes <= len(self)
+
+		result = self[self.pos : self.pos + nbytes].str()
+		self.pos += nbytes
+
+		return result
+
+	def write(self, data):
+		nbytes = len(data)
+		assert self.pos + nbytes <= len(self)
+
+		self.fp.seek(self.start + self.pos)
+		self.fp.write(data)
+		self.pos += nbytes
+
 	def str(self):
 		self.fp.seek(self.slice.start)
 		width = self.slice.stop - self.slice.start
@@ -88,6 +115,13 @@ class Buffer(object):
 			yield self[i]
 			i += 1
 	
+	def __rshift__(self, fmt):
+		fmtlen = struct.calcsize(fmt)
+		assert self.pos + fmtlen <= len(self)
+		res = self[self.pos:][fmt]
+		self.pos += fmtlen
+		return res
+
 	def __getitem__(self, key):
 		width = self.slice.stop - self.slice.start
 
