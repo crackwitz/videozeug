@@ -1,4 +1,5 @@
 #!/usr/bin/env python2.7
+# -*- coding: utf-8 -*-
 
 import os
 import sys
@@ -26,7 +27,7 @@ def write_ffdata(chapters, outfile=sys.stdout):
 		print >> outfile, "TIMEBASE=%d/%d" % (timebase.numerator, timebase.denominator)
 		print >> outfile, "START=%d" % iround(chapter['start'] / timebase)
 		print >> outfile, "END=%d" % iround((chapter['start']+chapter['duration']) / timebase)
-		print >> outfile, "title=%s" % escape_data(chapter['name'])
+		print >> outfile, "title=%s" % escape_data(chapter['name'].encode('utf8'))
 		print >> outfile
 
 def hmsformat(seconds, decimals=0):
@@ -36,7 +37,7 @@ def hmsformat(seconds, decimals=0):
 
 def write_jumplist(chapters, outfile=sys.stdout):
 	for chapter in chapters:
-		print >> outfile, "%s %s" % (hmsformat(chapter['start']), chapter['name'])
+		print >> outfile, "%s %s" % (hmsformat(chapter['start']), chapter['name'].encode('utf8'))
 
 def dictmerge(d1, d2):
 	res = d1.copy()
