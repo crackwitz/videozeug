@@ -10,6 +10,8 @@ import re
 import glob
 import pprint; pp = pprint.pprint
 
+from quaxlist import *
+
 def waitKeys():
 	while True:
 		key = cv2.waitKey(1)
@@ -17,24 +19,6 @@ def waitKeys():
 		if key == -1: break
 		
 		yield key
-
-def read_plaintext(fname):
-	rex = re.compile(r'([0-9]+)\.([0-9]+): (\d+)')
-	# peculiarity in Walter Unger's script
-	# "0.90" is 0.090, not 0.900
-
-	res = {}
-	
-	for line in open(fname):
-		m = rex.match(line)
-		assert m
-		(secs, msecs, slide) = m.groups()
-		time = int(secs) + int(msecs) * 0.001
-
-		assert all(k <= time for k in res)
-		res[time] = int(slide)
-	
-	return res
 
 class SlideCache(object):
 	def __init__(self, framesize, filenames):
@@ -75,21 +59,19 @@ class MarkerList(object):
 		self.markers = markers
 	
 	def __getitem__(self, timeindex):
-		candidates = [(t,k) for (t,k) in self.markers.iteritems() if t < timeindex]
-		candidates.sort()
-		if not candidates:
+		try:
+			return max((t,k) for (t,k) in self.markers if t < timeindex)
+		except ValueError:
 			return None
-			
-		return candidates[-1]
 	
 	def __len__(self):
 		return len(self.markers)
 	
 	def values(self):
-		return self.markers.values()
+		return [v for u,v in self.markers]
 	
 	def keys(self):
-		return self.markers.keys()
+		return [u for u,v in self.markers]
 	
 
 fourcc = cv2.cv.FOURCC(*"MJPG")
@@ -116,7 +98,7 @@ framesize = tuple(map(int, sys.argv[2].split('x')))
 (framew,frameh) = framesize
 
 fmarkers = sys.argv[3]
-markerlist = MarkerList(read_plaintext(fmarkers))
+markerlist = MarkerList(quaxlist.read_file(fmarkers))
 
 slides = []
 for x in sys.argv[4:]:
