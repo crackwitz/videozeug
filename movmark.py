@@ -70,10 +70,15 @@ def iround(x):
 # ----------------------------------------------------------------------
 
 if __name__ == '__main__':
-	(markersfname, movfname) = sys.argv[1:]
+	movfname = sys.argv[1]
+	markersfname = '-' # TODO: parse args
 
 	assert movfname.endswith('.mov')
 	
+	markertype = "Chapter"
+	if len(sys.argv) >= 3:
+		markertype = sys.argv[2]
+
 	# read markers (json) from stdin or file
 	markers = json.load(sys.stdin if (markersfname == '-') else open(markersfname))
 	
@@ -111,8 +116,8 @@ if __name__ == '__main__':
 		deNS("xmpMM:InstanceID"),
 		"xmp.iid:{0}".format(uuid.uuid4())) # random UUID
 	
-	# find a track named "Chapters"
-	chaptertracks = xmptree.xpath("/x:xmpmeta/rdf:RDF/rdf:Description/xmpDM:Tracks/rdf:Bag/rdf:li/rdf:Description[@xmpDM:trackName='Chapter']", namespaces=nsmap)
+	# find a track with given marker type
+	chaptertracks = xmptree.xpath("/x:xmpmeta/rdf:RDF/rdf:Description/xmpDM:Tracks/rdf:Bag/rdf:li/rdf:Description[@xmpDM:trackName='{0}']".format(markertype), namespaces=nsmap)
 	assert chaptertracks
 	(chaptertrack,) = chaptertracks
 
