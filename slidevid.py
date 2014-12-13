@@ -10,7 +10,7 @@ import re
 import glob
 import pprint; pp = pprint.pprint
 
-from quaxlist import *
+import quaxlist
 
 def waitKeys():
 	while True:
@@ -98,7 +98,7 @@ framesize = tuple(map(int, sys.argv[2].split('x')))
 (framew,frameh) = framesize
 
 fmarkers = sys.argv[3]
-markerlist = MarkerList(quaxlist.read_file(fmarkers))
+markerlist = MarkerList(quaxlist.read_file(open(fmarkers)))
 
 slides = []
 for x in sys.argv[4:]:
@@ -113,7 +113,7 @@ assert all(index-1 in cache for index in markerlist.values()), [index for index 
 print "markers:", min(markerlist.values()), '..', max(markerlist.values())
 
 # init
-duration = max(duration, max(markerlist.markers) + minlastslide)
+duration = max(duration, max(markerlist.keys()) + minlastslide)
 print "duration: %d markers, %.3f secs" % (len(markerlist), duration)
 
 assert not os.path.exists(fvideo)
