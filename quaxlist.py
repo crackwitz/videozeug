@@ -47,6 +47,7 @@ if __name__ == '__main__':
 	markers = read_file(inf)
 	
 	data = {
+		'duration': max(u for u,v in markers) + 300,
 		'chapters': [
 			{
 				'name': "Slide {0}".format(slideno),

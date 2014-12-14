@@ -4,7 +4,7 @@ from __future__ import division
 import os
 import sys
 import cv2
-import numpy
+import numpy as np; np.set_printoptions(suppress=True)
 import json
 import re
 import glob
@@ -37,11 +37,32 @@ class SlideCache(object):
 		fname = self.filenames[index]
 		#print "\nloading [%s] %s" % (index, repr(fname))
 		im = cv2.imread(fname)
-		im = cv2.resize(im, self.framesize, interpolation=cv2.INTER_AREA)
+		imh,imw = im.shape[:2]
+
+		# checking black/white present
 		if im.min() != 0 or im.max() != 255:
 			print "WARNING:", "black", im.min(), "white", im.max(), "in [%d]" % index, repr(fname)
 			self.warn_colorspace.add(fname)
-		return im
+
+		# maintaining aspect ratio
+		(framew,frameh) = self.framesize
+		
+		scale = min(framew/imw, frameh/imh)
+		scaled = cv2.resize(src=im, dsize=(0,0), fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+		sh,sw = scaled.shape[:2]
+
+		assert sw <= framew
+		assert sh <= frameh
+
+		if sw < framew or sh < frameh:
+			offx = int(round(framew/2 - sw/2))
+			offy = int(round(frameh/2 - sh/2))
+			imout = np.zeros((frameh,framew,3), dtype=np.uint8)
+			imout[offy:offy+sh, offx:offx+sw] = scaled
+		else:
+			imout = scaled
+
+		return imout
 	
 	def at(self, key):
 		return key == self.cur_index
@@ -72,128 +93,218 @@ class MarkerList(object):
 	
 	def keys(self):
 		return [u for u,v in self.markers]
+
+
+if __name__ == '__main__':
+	# INIT
 	
+	fvideo = None
+	novid = False
+	fmarkers = None
+	ftitles = None
+	fgslides = [] # list of glob patterns
 
-fourcc = cv2.cv.FOURCC(*"MJPG")
-fourcc = -1
-fourcc = cv2.cv.FOURCC(*"LAGS")
-#fourcc = cv2.cv.FOURCC(*"TSCC")
-fps = 25
-#duration = 5400.0
-duration = 0.0
-minlastslide = 300.0
-#framesize = (1024,768)
-#framesize = (1280,960)
+	headless = False
+	fourcc = cv2.cv.FOURCC(*"MJPG")
+	fourcc = -1
+	fourcc = cv2.cv.FOURCC(*"LAGS")
+	#fourcc = cv2.cv.FOURCC(*"TSCC")
+	fps = 25
+	minlastslide = 300.0
+	#framesize = (1024,768)
+	#framesize = (1280,960)
+	framesize = (1920, 1080)
 
-# collecting parameters
+	# all unrecognized stuff	
+	args = []
 
-headless = False
-if sys.argv[1] == '-headless':
-	del sys.argv[1]
-	headless = True
+	# COLLECTING PARAMETERS
 
-fvideo = sys.argv[1]
+	i = 1
+	while i < len(sys.argv):
+		arg = sys.argv[i]
+		
+		if not arg.startswith('-'):
+			args.append(arg)
+		
+		elif arg == '-vid':
+			i += 1
+			fvideo = sys.argv[i]
+		
+		elif arg == '-novid':
+			novid = True
+		
+		elif arg == '-markers':
+			i += 1
+			fmarkers = sys.argv[i]
+		
+		elif arg == '-slides':
+			i += 1
+			fgslides.append(sys.argv[i])
+		
+		elif arg == '-titles':
+			i += 1
+			ftitles = sys.argv[i]
+		
+		elif arg == '-headless':
+			headless = True
 
-framesize = tuple(map(int, sys.argv[2].split('x')))
-(framew,frameh) = framesize
+		elif arg == '-fourcc':
+			i += 1
+			fourcc = sys.argv[i]
+			if fourcc == '-1':
+				fourcc = -1
+			else:
+				assert len(fourcc) == 4
+				fourcc = cv2.cv.FOURCC(*fourcc)
+		
+		elif arg == '-fps':
+			i += 1
+			fps = float(sys.argv[i])
+		
+		elif arg == '-overtime':
+			i += 1
+			minlastslide = float(sys.argv[i])
 
-fmarkers = sys.argv[3]
-markerlist = MarkerList(quaxlist.read_file(open(fmarkers)))
+		elif arg == '-wh':
+			framesize = int(sys.argv[i+1]), int(sys.argv[i+2])
+			i += 2
 
-slides = []
-for x in sys.argv[4:]:
-	slides += glob.glob(x)
-assert len(slides) > 0
-assert slides == sorted(slides)
-print "#slides:", len(slides)
-cache = SlideCache(framesize, slides)
+		i += 1
 
-assert all(index-1 in cache for index in markerlist.values()), [index for index in markerlist.values() if index-1 not in cache]
 
-print "markers:", min(markerlist.values()), '..', max(markerlist.values())
+	#assert fvideo is not None, "expecting -vid"
+	assert fmarkers is not None, "expecting -markers"
 
-# init
-duration = max(duration, max(markerlist.keys()) + minlastslide)
-print "duration: %d markers, %.3f secs" % (len(markerlist), duration)
+	(framew,frameh) = framesize
 
-assert not os.path.exists(fvideo)
-vid = cv2.VideoWriter(fvideo, fourcc, fps, framesize)
-assert vid.isOpened()
-blackframe = numpy.zeros((frameh, framew, 3), numpy.uint8)
+	# SLIDE TRANSITIONS
+	markerlist = MarkerList(quaxlist.read_file(open(fmarkers)))
+	print "markers:", min(markerlist.values()), '..', max(markerlist.values())
 
-fstart = 0
-#fstart = int(4500 * fps)
-fend   = int(duration * fps)
+	duration = max(markerlist.keys()) + minlastslide
+	print "duration: %d markers, %.3f secs" % (len(markerlist), duration)
 
-if not headless:
-	cv2.namedWindow("display", cv2.WINDOW_NORMAL)
-	cv2.resizeWindow("display", 800, 600)
+	# COLLECT SLIDES (PICTURES)
+	slides = []
+	for x in fgslides:
+		slides += glob.glob(x)
+	assert len(slides) > 0, "expecting -slides <glob>"
+	assert slides == sorted(slides)
+	print "#slides:", len(slides)
+	cache = SlideCache(framesize, slides)
 
-print
-
-try:
-	aspect_warned = False
+	assert all(index-1 in cache for index in markerlist.values()), [index for index in markerlist.values() if index-1 not in cache]
 	
-	for fno in xrange(fstart, fend):
-		now = fno / fps
+	# DUMP CHAPTER MARKERS, IF AVAILABLE
+	if ftitles is not None:
+		titles = json.load(open(ftitles))
+		titles = {int(k) : v for k,v in titles.iteritems()}
 		
-		lookup = markerlist[now]
+		chapters = []
+		prevchapter = None # slideno
+		for t,slideno in markerlist.markers:
+			if slideno == prevchapter:
+				continue
+			if slideno not in titles:
+				continue
+			chapters.append({
+				'name': titles[slideno],
+				'start': t,
+				'slide': slideno,
+			})
+			prevchapter = slideno
 		
-		do_update = True
+		data = {
+			'chapters': chapters,
+			'duration': duration,
+		}
 		
-		if lookup is None:
-			print "lookup failed for %.3f" % now
-			im = blackframe
-		else:
-			(slidetime, slideno) = lookup
-			do_update = not cache.at(slideno-1)
-			im = cache[slideno-1]
-		
-		# check aspect ratio
-		imh,imw = im.shape[:2]
-		if (not aspect_warned) and abs((imw/imh) / (framew/frameh) - 1) > 1e-2:
-			aspect_warned = True
-			raw_input("aspect ratios don't match for slide %d: %d/%d=%.3f vs. %d/%d=%.3f" % (slideno, imw, imh, imw/imh, framew, frameh, framew/frameh))
-		
-		vid.write(im)
-		
-		if do_update and not headless:
-			cv2.imshow("display", im)
-			
-		if fno % fps == 0:
-			sys.stdout.write("\r%5.1f%% @ %.2f secs..." % (100 * now / duration, now))
-			sys.stdout.flush()
+		fchapters = "{0}-chapters.json".format(os.path.splitext(fvideo)[0])
+		assert not os.path.exists(fchapters), "file exists: {0}".format(fchapters)
+		json.dump(data, open(fchapters, 'w'), sort_keys=True, indent=1)
+		print "dumped chapter markers to", fchapters
 
+	# BUILDING VIDEO
+	if (fvideo is not None) and (not novid):
+		assert not os.path.exists(fvideo)
+		vid = cv2.VideoWriter(fvideo, fourcc, fps, framesize)
+		assert vid.isOpened()
+		blackframe = np.zeros((frameh, framew, 3), np.uint8)
+
+		fstart = 0
+		#fstart = int(4500 * fps)
+		fend   = int(duration * fps)
+
+		if not headless:
+			cv2.namedWindow("display", cv2.WINDOW_NORMAL)
+			cv2.resizeWindow("display", 800, 600)
+
+		print
+
+		try:
+			aspect_warned = False
+
+			for fno in xrange(fstart, fend):
+				now = fno / fps
+
+				lookup = markerlist[now]
+
+				do_update = True
+
+				if lookup is None:
+					print "lookup failed for %.3f" % now
+					im = blackframe
+				else:
+					(slidetime, slideno) = lookup
+					do_update = not cache.at(slideno-1)
+					im = cache[slideno-1]
+
+				# check aspect ratio
+				imh,imw = im.shape[:2]
+				if (not aspect_warned) and abs((imw/imh) / (framew/frameh) - 1) > 1e-2:
+					aspect_warned = True
+					raw_input("aspect ratios don't match for slide %d: %d/%d=%.3f vs. %d/%d=%.3f" % (slideno, imw, imh, imw/imh, framew, frameh, framew/frameh))
+
+				vid.write(im)
+
+				if do_update and not headless:
+					cv2.imshow("display", im)
+
+				if fno % fps == 0:
+					sys.stdout.write("\r%5.1f%% @ %.2f secs..." % (100 * now / duration, now))
+					sys.stdout.flush()
+
+					if not headless:
+						keys = list(waitKeys())
+						if 27 in keys:
+							print "aborted"
+							raise KeyboardInterrupt
+
+						elif keys:
+							print "waitkey ->", keys
+
+			# fix for lagarith nullframes and playback.
+			# this should force one last keyframe.
+			vid.write(blackframe)
+
+			print
+			print "done"
+
+			if cache.warn_colorspace:
+				print "WARNING: colorspace possibly wrong in:"
+				for fname in sorted(cache.warn_colorspace):
+					print "    %s" % fname
+
+
+		except:
+			vid.release()
+			#os.unlink(fvideo)
+
+			raise
+
+		finally:
 			if not headless:
-				keys = list(waitKeys())
-				if 27 in keys:
-					print "aborted"
-					raise KeyboardInterrupt
+				cv2.destroyWindow("display")
+			vid.release()
 
-				elif keys:
-					print "waitkey ->", keys
-	
-	# fix for lagarith nullframes and playback.
-	# this should force one last keyframe.
-	vid.write(blackframe)
-	
-	print
-	print "done"
-
-	if cache.warn_colorspace:
-		print "WARNING: colorspace possibly wrong in:"
-		for fname in sorted(cache.warn_colorspace):
-			print "    %s" % fname
-
-
-except:
-	vid.release()
-	os.unlink(fvideo)
-	
-	raise
-
-finally:
-	if not headless:
-		cv2.destroyWindow("display")
-	vid.release()
-	
