@@ -189,7 +189,8 @@ if __name__ == '__main__':
 	slides = []
 	for x in fgslides:
 		slides += glob.glob(x)
-	assert len(slides) > 0, "expecting -slides <glob>"
+	if len(slides) == 0:
+		print >> sys.stdout, "WARNING: expecting -slides <glob>"
 	assert slides == sorted(slides)
 	print "#slides:", len(slides)
 	cache = SlideCache(framesize, slides)
