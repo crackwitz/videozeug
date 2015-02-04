@@ -112,8 +112,8 @@ if __name__ == '__main__':
 	fps = 25
 	minlastslide = 300.0
 	#framesize = (1024,768)
-	#framesize = (1280,960)
-	framesize = (1920, 1080)
+	framesize = (1280,960)
+	#framesize = (1920, 1080)
 
 	# all unrecognized stuff	
 	args = []
