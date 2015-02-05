@@ -173,7 +173,7 @@ def handle_FramebufferUpdate(timestamp, buf, chunkgen):
 
 			for i in xrange(subrects):
 				(subpixel, subx, suby, subw, subh) = (data >> ">4sHHHH")
-				subbuf[suby : suby+subh, subx : subx+subw] = bgpixel
+				subbuf[suby : suby+subh, subx : subx+subw] = parse_pixel(subpixel)
 
 		elif renc == 4: # corre
 			subrects = (data >> ">I")
@@ -184,7 +184,7 @@ def handle_FramebufferUpdate(timestamp, buf, chunkgen):
 
 			for i in xrange(subrects):
 				(subpixel, subx, suby, subw, subh) = (data >> ">4sBBBB")
-				subbuf[suby : suby+subh, subx : subx+subw] = bgpixel
+				subbuf[suby : suby+subh, subx : subx+subw] = parse_pixel(subpixel)
 
 		elif renc == 5: # hextile
 			bgpixel = None
