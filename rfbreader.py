@@ -389,11 +389,12 @@ if __name__ == '__main__':
 			if key == -1:
 				break
 
-	fps = Fraction(25)
+	fps = 25
 	fourcc = -1
 	fourcc = cv2.cv.CV_FOURCC(*"LAGS")
-	outvid = cv2.VideoWriter(outfname, fourcc, 25, (cropw, croph))
+	outvid = cv2.VideoWriter(outfname, fourcc, fps, (cropw, croph))
 	currentframe = 0
+	fps = Fraction(fps)
 	
 	running = True
 	while running:
@@ -410,9 +411,3 @@ if __name__ == '__main__':
 		
 		outvid.write(framebuf[:croph,:cropw])
 		currentframe += 1
-
-# TODO:
-#  1) pull chunks LEQ given timestamp
-#  2) render chunks
-#  3) framebuf -> video file
-
