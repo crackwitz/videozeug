@@ -15,6 +15,7 @@ import ctypes
 from ctypes import wintypes
 import win32con
 import win32com.client
+import winsound
 
 shell = win32com.client.Dispatch("WScript.Shell")
 
@@ -45,6 +46,8 @@ def handle_win_f3():
 		screen.save(fname)
 		slidecounter += 1
 		print "saved {0!r}".format(fname)
+		time.sleep(0.25)
+		winsound.PlaySound(r"C:\windows\media\Windows Navigation Start.wav", winsound.SND_FILENAME)
 		shell.SendKeys("{RIGHT}", 0)
 	else:
 		user32.PostQuitmessage(0)
