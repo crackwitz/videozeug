@@ -12,7 +12,7 @@ corners = sys.argv[1]
 invidname = sys.argv[2]
 outvidname = sys.argv[3]
 
-data = json.load(open(sys.argv[1]))
+data = json.load(open(corners))
 outsize = tuple(data['canvas'])
 src,dst = np.float32(zip(*data['points']))
 
