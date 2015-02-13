@@ -12,9 +12,15 @@ for x in sys.argv[1:]:
 
 #import pdb; pdb.set_trace()
 
-vid = files[0]
+base = None
+for vid in files:
+	m = re.match(r'(.*)-\d+p-ame?\.mp4$', vid)
+	if not m: continue
+	base = m.group(1)
 
-base = re.match(r'(.*)-\d+p-ame?\.mp4$', vid).group(1)
+if base is None:
+	base = re.sub(r'(.*)-ame\.mp4$', r'\1', files[0])
+
 json = base + "-chapters.json"
 ffmeta = base + "-chapters.ffmeta"
 vtt = base + "-chapters.vtt"
