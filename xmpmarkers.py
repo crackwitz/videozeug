@@ -87,13 +87,19 @@ def extract(xmpdata):
 
 	### GET CHAPTER MARKERS
 	chapters = []
+	comments = []
 	for node in markernode.xpath("./xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
 		# this is for CC 2013 formats
 		descr = node.xpath("./rdf:Description", namespaces=nsmap)
 		if descr: (node,) = descr
 		
 		itemtype = xpath_value(node, "./@xmpDM:type")
-		if itemtype not in ("Chapter", "Comment"):
+		
+		if itemtype == 'Chapter':
+			markerlist = chapters
+		elif itemtype == 'Comment':
+			markerlist = comments
+		else:
 			continue
 		
 		chaptername = xpath_value(node, "./@xmpDM:name")
@@ -103,13 +109,13 @@ def extract(xmpdata):
 		duration = xpath_value(node, "./@xmpDM:duration", int)
 		if duration is not None: duration = float(duration * markerframerate)
 		
-		chapters.append({
+		markerlist.append({
 			'name': chaptername,
 			'start': starttime,
 			'duration': duration
 		})
 
-	data['chapters'] = chapters
+	data['chapters'] = (chapters or comments)
 
 	return data
 
