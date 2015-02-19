@@ -55,7 +55,11 @@ def write_webvtt(chatpers, outfile=sys.stdout):
 			hmsformat(chapter['start'], decimals=3),
 			hmsformat(chapter['start'] + chapter['duration'], decimals=3),
 		)
-		print >> outfile, chapter['name'].encode("utf-8")
+		if ('name' in chapter) and (chapter['name'] is not None):
+			print >> outfile, chapter['name'].encode("utf-8")
+		else:
+			print >> outfile, "(no title)"
+
 		print >> outfile
 
 # ----------------------------------------------------------------------
