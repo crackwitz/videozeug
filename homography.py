@@ -32,6 +32,7 @@ assert outvid.isOpened()
 
 if not headless:
 	cv2.namedWindow("straight", cv2.WINDOW_NORMAL)
+	cv2.resizeWindow("straight", outsize[0] // 2, outsize[1] // 2)
 
 inframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
 outframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
