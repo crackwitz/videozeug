@@ -43,16 +43,19 @@ def get_rms_peak(fname):
 	return rmspeak
 
 def transcode(inputs, output, gain=0):
-	inputlist = ''.join("file '{0}'\n".format(i) for i in inputs)
+	command = [ffmpeg, '-async', '1']
 	
-	tempfile = "{0}.inputs.txt".format(output)
-	with open(tempfile, 'w') as fp:
-		fp.write(inputlist)
-	
-	command = [ffmpeg, '-f', 'concat', '-async', '1', '-i', tempfile]
-	if gain != 0:
-		command += ['-filter:a', 'volume=volume={0:+f}dB'.format(gain)]
+	for i in inputs: command += ['-i', i]
 
+	# assuming 1 video and 1 audio stream per file
+	command += ['-filter_complex',
+		' '.join("[{0}:v][{0}:a]".format(i) for i,inp in enumerate(inputs)) +
+		'concat=n={0}:v=1:a=1'.format(len(inputs)) + ' [v][aj];' + 
+		'[aj] volume=volume={0:+f}dB [a]'.format(gain)
+	]
+	command += ['-map', '[v]']
+	command += ['-map', '[a]']
+	
 	command += ['-c:a', 'libvo_aacenc', '-b:a', '64k']
 	command += ['-c:v', 'libx264', '-profile:v', 'main', '-crf', '20', '-g', '125']
 	command += ['-aspect:v', '4:3', '-movflags', 'faststart']
@@ -62,9 +65,6 @@ def transcode(inputs, output, gain=0):
 	print command
 	rv = subprocess.call(command)
 
-	if os.path.exists(tempfile):
-		os.unlink(tempfile)
-	
 	return rv
 
 def group_files(inpattern, outpattern, files):
