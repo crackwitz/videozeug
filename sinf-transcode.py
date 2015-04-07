@@ -103,6 +103,7 @@ if __name__ == '__main__':
 		'dar':    [(4,3),  lambda s: tuple(map(int, s.split(':')))],
 		'in':     [None,   lambda s: s],
 		'out':    [None,   lambda s: s],
+		'skip':   [None,   lambda s: eval(s)],
 	}
 	
 	while sys.argv[1:] and '=' in sys.argv[1]:
@@ -129,9 +130,14 @@ if __name__ == '__main__':
 		print
 
 		if os.path.exists(outfile):
-			print "<- {0}".format(outfile)
-			if raw_input("file exists. skip? (y/n) ") in ("", 'y'):
+			if settings['skip'][0] is None:
+				print "<- {0}".format(outfile)
+				if raw_input("file exists. skip? (y/n) ") in ("", 'y'):
+					continue
+			elif settings['skip'][0]:
 				continue
+			elif not settings['skip'][0]:
+				pass
 
 		infiles = groups[outfile]
 
