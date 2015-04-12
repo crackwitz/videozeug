@@ -74,7 +74,7 @@ def transcode(inputs, output, dar, gain=0):
 	command += ['-map', '[ag]']
 	
 	command += ['-c:a', 'libvo_aacenc', '-b:a', '64k']
-	command += ['-c:v', 'libx264', '-profile:v', 'main', '-crf', '23', '-g', '125']
+	command += ['-c:v', 'libx264', '-profile:v', 'main', '-crf', '20', '-g', '125']
 	command += ['-aspect:v', '{0}:{1}'.format(dar[0], dar[1])]
 	command += ['-movflags', 'faststart']
 	#command += ['-threads', '4']
