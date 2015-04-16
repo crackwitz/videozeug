@@ -7,15 +7,18 @@ import glob
 import subprocess
 import re
 import collections
-import socket
+import socket # gethostname
+import json
 from itertools import *
 import pprint; pp = pprint.pprint
 
 # this shit needs astats, which didn't exist in 2013
 if socket.gethostname() == 'video-main':
 	ffmpeg = '/home/crackwitz/portalhome/.local/bin/ffmpeg'
+	ffprobe = '/home/crackwitz/portalhome/.local/bin/ffprobe'
 else:
 	ffmpeg = 'ffmpeg'
+	ffprobe = 'ffprobe'
 
 def common_prefix(strings):
 	def sub(a, b):
@@ -23,6 +26,19 @@ def common_prefix(strings):
 		return a[:min(diff)]
 
 	return reduce(sub, strings)
+
+def get_stream_counts(fname):
+	output = subprocess.check_output([ffprobe, fname, '-of', 'json', '-show_streams'])
+	
+	data = json.loads(output)
+	
+	streams = data['streams']
+	
+	return (
+		sum(s['codec_type'] == 'audio' for s in streams),
+		sum(s['codec_type'] == 'video' for s in streams),
+	)
+	
 
 def get_astats(fname):
 	output = subprocess.check_output([ffmpeg, '-i', fname, '-filter:a', 'astats', '-vn', '-f', 'null', 'dummy'], stderr=subprocess.STDOUT)
@@ -43,39 +59,60 @@ def get_rms_peak(fname):
 	return rmspeak
 
 def transcode(inputs, output, dar, gain=0):
+	assert os.path.splitext(output)[1] in ('.m4a', '.mp4', '.mov'), "output file extension not what I expected"
+	
 	command = [ffmpeg, '-async', '1']
 	
 	for i in inputs: command += ['-i', i]
 	
-	chains = []
-	
-	chains += [
-		'[{0}:v] setdar=dar={1}/{2} [{0}aspect]'.format(i, dar[0], dar[1])
-		for i in xrange(len(inputs))
-	]
-	
 	# assuming 1 video and 1 audio stream per file
+	n = len(inputs)
+	na = 1
+	nv = 1
+	# defaults
+	
+	# detect stream counts
+	streamcounts = map(get_stream_counts, inputs)
+	nas, nvs = zip(*streamcounts)
+	assert len(set(nas)) == 1, ('audio stream counts differ:', nas)
+	assert len(set(nvs)) == 1, ('video stream counts differ:', nvs)
+	na = nas[0]
+	nv = nvs[0]
+
+	chains = []
+
+	if nv > 0:
+		chains += [
+			'[{0}:v] setdar=dar={1}/{2} [{0}aspect]'.format(i, dar[0], dar[1])
+			for i in xrange(len(inputs))
+		]
+	
 	chains.append(
 		# inputs
-		' '.join("[{0}aspect][{0}:a] ".format(i) for i,inp in enumerate(inputs)) +
+		' '.join(''.join(["[{0}aspect]".format(i)] * (nv > 0) + ["[{0}:a] ".format(i)] * (na > 0)) for i,inp in enumerate(inputs)) +
 		# body
-		'concat=n={0}:v=1:a=1'.format(len(inputs)) +
+		'concat=n={n}:v={nv}:a={na}'.format(n=n, na=na, nv=nv) +
 		# outputs
-		' [vj][aj]'
+		' [vj]' * (nv > 0) +
+		' [aj]' * (na > 0)
 	)
 	
-	chains.append(
-		'[aj] volume=volume={0:+f}dB [ag]'.format(gain)
-	)
+	if na > 0:
+		chains.append(
+			'[aj] volume=volume={0:+f}dB [ag]'.format(gain)
+		)
 	
 	command += ['-filter_complex', '; '.join(chains)]
 	
-	command += ['-map', '[vj]']
-	command += ['-map', '[ag]']
+	if nv > 0: command += ['-map', '[vj]']
+	if na > 0: command += ['-map', '[ag]']
 	
-	command += ['-c:a', 'libvo_aacenc', '-b:a', '64k']
-	command += ['-c:v', 'libx264', '-profile:v', 'main', '-crf', '20', '-g', '125']
-	command += ['-aspect:v', '{0}:{1}'.format(dar[0], dar[1])]
+	if na > 0:
+		command += ['-c:a', 'libvo_aacenc', '-b:a', '64k']
+	if nv > 0:
+		command += ['-c:v', 'libx264', '-profile:v', 'main', '-crf', '20', '-g', '125']
+		command += ['-aspect:v', '{0}:{1}'.format(dar[0], dar[1])]
+	
 	command += ['-movflags', 'faststart']
 	#command += ['-threads', '4']
 	command += [output]
@@ -121,7 +158,7 @@ if __name__ == '__main__':
 
 	groups = group_files(settings['in'][0], settings['out'][0], infiles)
 	
-	pp(groups)
+	print json.dumps({key: map(os.path.basename, groups[key]) for key in groups}, indent=1, sort_keys=True)
 	
 	if raw_input("proceed? ").strip() not in ('y', ''):
 		sys.exit(-1)
@@ -157,4 +194,6 @@ if __name__ == '__main__':
 		rv = transcode(infiles, outfile, gain=gain, dar=settings['dar'][0])
 		assert rv == 0
 		
+	print json.dumps({key: map(os.path.basename, groups[key]) for key in groups}, indent=1, sort_keys=True)
+	
 # sinf-transcode.py -9.0 'source/2003-SS-CG1.([VU]\d+)([ab]?).20(\d{2})-(\d{2})-(\d{2}).rmvb' '03ss-cg1-{3}{4}{5}-{1}-sd.mp4' source/*.rmvb
