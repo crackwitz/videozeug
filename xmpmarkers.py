@@ -86,8 +86,7 @@ def extract(xmpdata):
 	markerframerate = xpath_value(markernode, "@xmpDM:frameRate", xmpfrac)
 
 	### GET CHAPTER MARKERS
-	chapters = []
-	comments = []
+	markers = []
 	for node in markernode.xpath("./xmpDM:markers/rdf:Seq/rdf:li", namespaces=nsmap):
 		# this is for CC 2013 formats
 		descr = node.xpath("./rdf:Description", namespaces=nsmap)
@@ -95,27 +94,23 @@ def extract(xmpdata):
 		
 		itemtype = xpath_value(node, "./@xmpDM:type")
 		
-		if itemtype == 'Chapter':
-			markerlist = chapters
-		elif itemtype == 'Comment':
-			markerlist = comments
-		else:
-			continue
-		
 		chaptername = xpath_value(node, "./@xmpDM:name")
+		location = xpath_value(node, "./@xmpDM:location")
 		
 		starttime = float(xpath_value(node, "./@xmpDM:startTime", int) * markerframerate)
 		
 		duration = xpath_value(node, "./@xmpDM:duration", int)
 		if duration is not None: duration = float(duration * markerframerate)
 		
-		markerlist.append({
+		markers.append({
+			'type': itemtype,
 			'name': chaptername,
 			'start': starttime,
-			'duration': duration
+			'duration': duration,
+			'location': location, # for WebLink
 		})
 
-	data['chapters'] = (chapters or comments)
+	data['chapters'] = markers
 
 	return data
 
@@ -125,10 +120,18 @@ if __name__ == '__main__':
 	import sys
 	import json
 	
-	(fname,) = sys.argv[1:]
+	(fname,) = sys.argv[1]
+	
+	if sys.argv[2:]:
+		typefilter = sys.argv[2].split(',')
+	else:
+		typefilter = None
 
 	xmpdata = sys.stdin if (fname == '-') else fname
 
 	data = extract(xmpdata)
+	
+	if typefilter is not None:
+		data['chapters'] = [marker for marker in data['chapters'] if marker['type'] in typefilter]
 	
 	print json.dumps(data, sort_keys=True, indent=1)
