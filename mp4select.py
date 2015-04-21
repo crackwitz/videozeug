@@ -32,6 +32,9 @@ def walk_boxes(buf):
 			boxlen = buf[p+8:][">Q"]
 			contentoffset = 16
 
+		if boxlen == 0: # extends to end of file
+			boxlen = len(buf) - p
+
 		box = buf[p+contentoffset : p+boxlen]
 		
 		yield boxcode, box
