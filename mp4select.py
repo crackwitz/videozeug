@@ -8,7 +8,7 @@ import pprint; pp = pprint.pprint
 
 from filetools import Buffer, FileBuffer, BufferReader
 
-__all__ = 'select dump match'.split()
+__all__ = 'select dump match FileBuffer'.split()
 
 # ----------------------------------------------------------------------
 
@@ -135,8 +135,8 @@ if __name__ == '__main__':
 		else:
 			args.append(arg)
 
-	if (dodump is None) and domatch:
-		dodump = False
+	if dodump is None:
+		dodump = not domatch
 
 	(selector, fname) = args
 
