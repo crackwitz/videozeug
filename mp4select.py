@@ -8,6 +8,8 @@ import pprint; pp = pprint.pprint
 
 from filetools import Buffer, FileBuffer, BufferReader
 
+__all__ = 'select dump match'.split()
+
 # ----------------------------------------------------------------------
 
 containerboxes = ''.split()
@@ -111,12 +113,39 @@ def dump(buf, outfile):
 	except IOError, e:
 		pass # probably just closed the pipe early
 
+def match(selector, buf):
+	for box in select(selector, buf):
+		return True
+	else:
+		return False
+
 # ----------------------------------------------------------------------
 
 if __name__ == '__main__':
-	(selector, fname) = sys.argv[1:]
+	domatch = False
+	dodump = None
+	
+	args = []
+	for arg in sys.argv[1:]:
+		if arg.startswith('-'):
+			if arg == '-m':
+				domatch = True
+			if arg == '-d':
+				dodump = True
+		else:
+			args.append(arg)
+
+	if (dodump is None) and domatch:
+		dodump = False
+
+	(selector, fname) = args
 
 	filebuf = FileBuffer(fname)
 	
-	for box in select(selector, filebuf):
-		dump(box, sys.stdout)
+	if dodump:
+		for box in select(selector, filebuf):
+			dump(box, sys.stdout)
+
+	if domatch:
+		matched = match(selector, filebuf)
+		sys.exit(0 if matched else 1)
