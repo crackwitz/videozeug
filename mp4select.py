@@ -86,11 +86,10 @@ def select(selector, buf):
 			continue
 
 		if prefix:
-			if content[:len(prefix)].str() == prefix:
-				pass
-				#content = content[16:] # skip uuid
-			else:
+			if content[:len(prefix)].str() != prefix:
 				continue
+			else: # did match, chop it off
+				content = content[len(prefix):]
 
 		if (spos is not None):
 			if spos == 0:
