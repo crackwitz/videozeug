@@ -8,7 +8,7 @@ from subprocess import call, Popen, PIPE
 
 files = []
 for x in sys.argv[1:]:
-	files += glob.glob(x) or [x]
+	files += glob.glob(x) or ([x] if os.path.exists(x) else [])
 
 #import pdb; pdb.set_trace()
 
