@@ -13,11 +13,14 @@ invidname = sys.argv[2]
 outvidname = sys.argv[3]
 
 data = json.load(open(corners))
+(inw,inh) = insize = tuple(data['source'])
 outsize = tuple(data['canvas'])
 src,dst = np.float32(zip(*data['points']))
 
 # need inverse -> switch params now
 H = cv2.getPerspectiveTransform(dst, src)
+
+# todo: center anchor
 
 imin = np.float32(0.0)
 imax = np.float32(255.0)
@@ -30,20 +33,22 @@ outvid = cv2.VideoWriter(outvidname, -1, 25, outsize)
 assert invid.isOpened()
 assert outvid.isOpened()
 
+assert inw == int(invid.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
+assert inh == int(invid.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
+
 if not headless:
 	cv2.namedWindow("straight", cv2.WINDOW_NORMAL)
 	cv2.resizeWindow("straight", outsize[0] // 2, outsize[1] // 2)
 
-inframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
+#inframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
 outframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
-scaledframe = np.zeros(outsize[::-1], dtype=np.float32)
+scaledframe = np.zeros(insize[::-1], dtype=np.float32)
 straightframe = np.zeros(outsize[::-1], dtype=np.float32)
 framecount = 0
 try:
 	while True:
-		(rv,_) = invid.read(inframe)
+		(rv,inframe) = invid.read()
 		if not rv: break
-		assert _ is inframe
 		framecount += 1
 		pos_msec = invid.get(cv2.cv.CV_CAP_PROP_POS_MSEC)
 
