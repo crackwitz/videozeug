@@ -14,7 +14,7 @@ for x in sys.argv[1:]:
 
 base = None
 for vid in files:
-	m = re.match(r'(.*)-\d+p-ame?\.mp4$', vid)
+	m = re.match(r'(.*)[_-]\d+p[_-]ame?\.mp4$', vid)
 	if not m: continue
 	base = m.group(1)
 
