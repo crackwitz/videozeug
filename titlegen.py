@@ -68,8 +68,8 @@ def get_frame(fname, position, height=None):
 	if height is None:
 		scaler = []
 	else:
-		# TODO: setsar=1?
-		scaler = ['-filter:v', 'scale=h={0}:w={0}*dar,setdar=1'.format(height)]
+		# TODO: setsar=1 ok? used to be setdar=1
+		scaler = ['-filter:v', 'scale=h={0}:w={0}*dar,setsar=1'.format(height)]
 	
 	data = subprocess.check_output([
 		'ffmpeg',
@@ -92,7 +92,7 @@ def titlegen(vidpath, stem=None):
 	assert os.path.exists(vidpath)
 
 	if stem is None:
-		stem = filestem(vidpath)
+		stem = filestem([vidpath])
 
 	titlepath = u"{0}-title.jpg".format(stem)
 
@@ -209,7 +209,7 @@ if __name__ == '__main__':
 
 	for arg in sys.argv[1:]:
 		jobs.append(
-			(arg, filestem(arg), None))
+			(arg, filestem([arg]), None))
 
 	if not jobs:
 		jobs = (
