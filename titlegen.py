@@ -119,7 +119,7 @@ def titlegen(vidpath, stem=None):
 	if os.path.exists(titlepath):
 		raise IOError("title file already exists")
 
-	position = float(meta['format']['duration']) / goldenratio
+	position = float(meta['format']['duration']) * (1 - 1/goldenratio)
 
 	im = get_frame(vidpath, position, 360)
 
