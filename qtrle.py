@@ -159,6 +159,6 @@ if __name__ == '__main__':
 				assert outvid.isOpened()
 
 		if outvid:
-			outvid.write(frame)
+			outvid.write(frame[:,:,::-1])
 
 		framecount += 1
