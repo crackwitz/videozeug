@@ -1,0 +1,3 @@
+[submodule "uuhash"]
+	path = uuhash
+	url = git@github.com:crackwitz/uuhash.git
