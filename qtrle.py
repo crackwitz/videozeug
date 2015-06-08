@@ -9,10 +9,7 @@ import numpy as np
 from filebuffer import *
 import mp4select
 
-
 # http://wiki.multimedia.cx/index.php?title=Apple_QuickTime_RLE
-
-cv2.namedWindow("display", cv2.WINDOW_NORMAL)
 
 def redraw(frame):
 	cv2.imshow("display", (frame[:,:,::-1]))
@@ -25,8 +22,16 @@ def redraw(frame):
 		if key == 27:
 			sys.exit(0)
 
+def get_chunks(buffer):
+	while buffer.pos < len(buffer):
+		chunksize = (buffer >> ">I")
+		chunk = buffer[buffer.pos : buffer.pos - 4 + chunksize]
+		buffer.pos += chunksize-4
+		yield chunk
 
-def decode_chunk(frame, chunk):
+
+def decode_chunk(frame, chunk, update=False):
+	chunk = chunk.copy()
 	xmax = ymax = 0
 	header = (chunk >> ">H")
 
@@ -89,7 +94,7 @@ def decode_chunk(frame, chunk):
 
 				#print "y", py
 				dispcount += 1
-				if dispcount % dispdelta == 0:
+				if update and (dispcount % dispdelta == 0):
 					redraw(frame)
 
 				state = 0
@@ -111,17 +116,19 @@ def decode_chunk(frame, chunk):
 		else:
 			assert False
 	
-	redraw(frame)
+	if update:
+		redraw(frame)
 	
-	if firstline == 0 and (linecount == frame.shape[0]) and not skipused:
-		print "that was a KEYFRAME"
+	is_fullframe = (firstline == 0 and (linecount == frame.shape[0]) and not skipused)
+
+	if is_fullframe:
+		print "that was a FULL FRAME"
 	
-	return (xmax, ymax)
-
-
-
+	return (xmax, ymax, is_fullframe)
 
 if __name__ == '__main__':
+	cv2.namedWindow("display", cv2.WINDOW_NORMAL)
+
 	width, height = sys.argv[1:3]
 	width = int(width) or 4096
 	height = int(height) or 2048
@@ -135,17 +142,12 @@ if __name__ == '__main__':
 	(mdat,) = mp4select.select("mdat", buf)
 	
 	frame = np.zeros((height, width, 4), dtype=np.uint8)
-	
+
 	# iterate chunks
 	framecount = 0
-	while mdat.pos < len(mdat):
-		#if framecount == 27: import pdb; pdb.set_trace()
-		chunksize = (mdat >> ">I")
-		chunk = mdat[mdat.pos : mdat.pos + chunksize-4]
-		mdat.pos += chunksize-4
-
+	for chunk in get_chunks(mdat):
 		print "decoding frame", framecount		
-		(mx, my) = decode_chunk(frame, chunk)
+		(mx, my) = decode_chunk(frame, chunk, update=True)
 
 		# detect resolution
 		if framecount == 0:

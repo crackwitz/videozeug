@@ -122,6 +122,9 @@ class Buffer(object):
 		self.pos += fmtlen
 		return res
 
+	def copy(self):
+		return self[:]
+
 	def __getitem__(self, key):
 		width = self.slice.stop - self.slice.start
 
