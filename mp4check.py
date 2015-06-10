@@ -129,6 +129,8 @@ class abbrevlist(list):
 
 handlers = {}
 
+# TODO: allow to specify context/path
+
 def handler(*types):
 	def decorate(fn):
 		for type in types:
@@ -235,6 +237,65 @@ def parse_mvhd(type, blockoffset, content, indent):
 	
 	return res
 
+@handler('tkhd')
+def parse_tkhd(type, offset, content, indent):
+	if os.getenv("DEBUG"):
+		#import pdb; pdb.set_trace()
+		pass
+	else:
+		return
+
+	version = (content >> ">B")
+	flags = byteint(content >> ">BBB")
+	flags = Record(
+		TrackEnabled   = bool(flags & 0x01),
+		TrackInMovie   = bool(flags & 0x02),
+		TrackInPreview = bool(flags & 0x04),
+		TrackInPoster  = bool(flags & 0x08),
+		other          = flags & ~0x0F
+	)
+	
+	ctime = mactime(content >> (">Q" if (version == 1) else ">I"))
+	mtime = mactime(content >> (">Q" if (version == 1) else ">I"))
+
+	track_id = (content >> ">i")
+	print "reserved", (content >> ">i")
+
+	# in time units
+	duration = (content >> (">Q" if (version == 1) else ">I"))
+
+	print "reserved", (content >> ">i")
+
+	assert (content >> ">i") == 0
+
+	video_layer = (content >> ">h")
+
+	qt_alternate = (content >> ">h")
+
+	audio_volume = float(content >> ">H") / 2**8
+
+	assert (content >> ">h") == 0
+
+	matrix = [float(content >> ">i") / 2**16 for _ in xrange(9)]
+
+	frame_size = [float(content >> ">i") / 2**16 for _ in xrange(2)]
+
+	print content.pos, len(content), repr(content[content.pos:])
+
+	return Record(
+		version=version,
+		flags=flags,
+		ctime=ctime,
+		mtime=mtime,
+		track_id=track_id,
+		duration=duration,
+		video_layer=video_layer,
+		qt_alternate=qt_alternate,
+		audio_volume=audio_volume,
+		matrix = matrix,
+		frame_size=frame_size
+	)
+
 @handler('mdhd')
 def parse_mdhd(type, offset, content, indent):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#mdhd
@@ -262,7 +323,111 @@ def parse_mdhd(type, offset, content, indent):
 		language = language,
 		quality = quality,
 	)
-	
+
+@handler('dinf')
+def handle_dinf(type, offset, content, indent):
+	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
+	return Record(
+
+	)
+
+def nibbles(value, n=0):
+	while value >> (4*n):
+		n += 1
+	return [(value >> 4*k) & 0x0f for k in xrange(n-1, -1, -1)]
+
+def byteint(values):
+	res = 0
+	for b in values:
+		res <<= 8
+		res |= b
+	return res
+
+@handler('stsd')
+def parse_hdlr(type, offset, content, indent):
+	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
+
+	version = nibbles(content >> ">B", 2)
+
+	flags = byteint(content >> ">BBB")
+
+	numdescr = (content >> ">I")
+
+	descriptions = []
+
+	for i in xrange(numdescr):
+		start = content.pos
+		descrlen = (content >> ">I")
+		descrformat = (content >> ">4s")
+		subcontent = content[start:start+descrlen]
+		content.pos += descrlen
+
+		descriptions.append(Record(format=descrformat, data=subcontent))
+		# TODO: richtig an den parser schicken
+
+
+		# res = Record()
+
+		# assert (content >> ">6B") == (0,0,0,0,0,0)
+
+		# res.data_ref = (content >> ">H")
+
+		# if res.format in ('mp4v', 'avc1', 'encv', 's263'):
+		# 	res.enc_version = nibbles(content >> ">H", 4)
+		# 	res.enc_rev     = nibbles(content >> ">H", 4)
+		# 	res.enc_vendor  = (content >> ">4s")
+
+		# 	res.video_temp_quali     = (content >> ">I")
+		# 	res.video_spatial_quali  = (content >> ">I")
+
+		# 	res.video_frame_pixel_size = (content >> ">HH")
+
+		# 	res.video_resolution = [float(v) / 2**16 for v in (content >> ">II")]
+
+		# 	assert (content >> ">i") == 0 # qt video data size
+		# 	assert (content >> ">H") == 1 # video frame count
+
+		# 	encnamelen = (content >> ">B")
+		# 	res.video_encoder_name = (content >> ">31s")[:encnamelen]
+
+		# 	video_pixel_depth = (content >> ">H")
+		# 	is_bw = (video_pixel_depth > 32)
+		# 	if is_bw: video_pixel_depth -= 32
+		# 	res.video_pixel_depth = "{0} bit {1}".format(
+		# 		video_pixel_depth, 
+		# 		"gray" if is_bw else "color")
+
+		# 	res.qt_video_color_table_id = (content >> ">h")
+
+		# elif res.format in ('mp4a', 'enca', 'samr', 'sawb'):
+		# 	res.enc_version = nibbles(content >> ">H", 4)
+		# 	res.enc_rev     = nibbles(content >> ">H", 4)
+		# 	res.enc_vendor  = (content >> ">4s")
+
+		# 	res.audio_channels = (content >> ">H")
+		# 	res.audio_sample_size = (content >> ">H")
+		# 	res.qt_audio_compression_id = (content >> ">h")
+
+		# 	assert (content >> ">h") == 0 # qt_audio_packet_size
+
+		# 	res.audio_sample_rate = float(content >> ">I") / 2**16
+
+		# elif res.format in ('mp4s', 'encs'):
+		# 	pass
+
+		# res.remainder = content[content.pos:]
+
+		# return res
+
+	# return Record(
+	# 	version=version,
+	# 	flags=flags,
+	# 	descriptions=descriptions
+	# )
+
+	return descriptions
+
+
 @handler('co64')
 def parse_co64(type, offset, content, indent):
 	return content
@@ -374,6 +539,35 @@ def parse_ftyp(type, offset, content, indent):
 		brand=brand,
 		version=version,
 		compatibles=compatibles
+	)
+
+@handler('vmhd')
+def parse_vmhd(type, offset, content, indent):
+	version = nibbles(content >> ">B", 2)
+
+	flags = byteint(content >> ">BBB")
+
+	quickdraw = (content >> ">H")
+	quickdraw = {
+		0x0000: 'copy',
+		0x0040: 'dither copy',
+		0x0100: 'straight alpha',
+		0x0103: 'composition dither copy',
+		0x0020: 'blend',
+		0x0101: 'premul white alpha',
+		0x0102: 'premul black alpha',
+		0x0024: 'transparent',
+		0x0104: 'straight alpha blend',
+
+	}.get(quickdraw, quickdraw)
+
+	mode_color = (content >> ">HHH")
+
+	return Record(
+		version=version,
+		flags=flags,
+		quickdraw=quickdraw,
+		mode_color=mode_color,
 	)
 
 @handler('meta')
