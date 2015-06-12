@@ -45,7 +45,7 @@ def dictmerge(d1, d2):
 		res[k] = d2[k]
 	return res
 
-def write_webvtt(chatpers, outfile=sys.stdout):
+def write_webvtt(chapters, outfile=sys.stdout):
 	print >> outfile, "WEBVTT"
 	print >> outfile
 
@@ -61,6 +61,18 @@ def write_webvtt(chatpers, outfile=sys.stdout):
 			print >> outfile, "(no title)"
 
 		print >> outfile
+
+def chapters_fix(xmpdata):
+	chapters = xmpdata.get('chapters', [])
+
+	starts = [c['start'] for c in chapters] + [xmpdata['duration']]
+
+	chapters = [
+		dictmerge(c, {'duration': end - c['start']})
+		for c,end in zip(chapters, starts[1:])
+	]
+
+	return chapters
 
 # ----------------------------------------------------------------------
 
@@ -83,14 +95,9 @@ if __name__ == '__main__':
 	outfile = sys.stdout if (outfile == '-') else open(outfile, 'w')
 
 	xmpdata = json.load(xmpdata)
-	chapters = xmpdata.get('chapters', [])
 
 	# fix chapter lengths
-	starts = [c['start'] for c in chapters] + [xmpdata['duration']]
-	chapters = [
-		dictmerge(c, {'duration': end - c['start']})
-		for c,end in zip(chapters, starts[1:])
-	]
+	chapters = chapters_fix(xmpdata)
 
 	# output
 	if outtype in ['ffmeta', 'ffmetadata']:

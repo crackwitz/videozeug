@@ -6,6 +6,11 @@ import re
 import glob
 from subprocess import call, Popen, PIPE
 
+import json
+import mp4select
+import xmpmarkers
+import ffmeta
+
 files = []
 for x in sys.argv[1:]:
 	files += glob.glob(x) or ([x] if os.path.exists(x) else [])
@@ -21,22 +26,27 @@ for vid in files:
 if base is None:
 	base = re.sub(r'(.*)-ame\.mp4$', r'\1', files[0])
 
-json = base + "-chapters.json"
-ffmeta = base + "-chapters.ffmeta"
+jsonfile = base + "-chapters.json"
+ffmetafile = base + "-chapters.ffmeta"
 vtt = base + "-chapters.vtt"
 jumplist = base + "-chapters.txt"
 
-mp4select = Popen(['mp4select.py', 'uuid/+16', vid], stdout=PIPE, shell=True)
-xmpmarkers = Popen(['xmpmarkers.py', '-'], stdin=mp4select.stdout, stdout=open(json, 'w'), shell=True)
-assert xmpmarkers.wait() == 0
+videobuf = mp4select.FileBuffer(vid)
+chunks = list(mp4select.select("uuid/+16", videobuf))
+if len(chunks) == 0:
+	sys.exit(-1)
 
-call(['ffmeta.py', 'ffmeta', json, ffmeta], shell=True)
+(xmpchunk,) = chunks
+xmpdata = xmpmarkers.extract(xmpchunk)
 
-call(['ffmeta.py', 'webvtt', json, vtt], shell=True)
+chapters = ffmeta.chapters_fix(xmpdata)
 
-call(['ffmeta.py', 'jumplist', json, jumplist], shell=True)
+json.dump(obj=xmpdata, fp=open(jsonfile, 'w'), sort_keys=True, indent=1)
+ffmeta.write_ffdata(chapters, open(ffmetafile, 'w'))
+ffmeta.write_webvtt(chapters, open(vtt, 'w'))
+ffmeta.write_jumplist(chapters, open(jumplist, 'w'))
 
 for invid in files:
 	outvid = invid.replace('-ame', '')
 	assert not os.path.exists(outvid)
-	call(['ffmpeg', '-i', invid, '-i', ffmeta, '-c', 'copy', '-movflags', 'faststart', outvid], shell=True)
+	call(['ffmpeg', '-i', invid, '-i', ffmetafile, '-c', 'copy', '-movflags', 'faststart', outvid])
