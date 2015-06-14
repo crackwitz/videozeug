@@ -10,6 +10,7 @@ import io
 import json
 import codecs
 import time
+import re
 
 # ======================================================================
 
@@ -96,14 +97,10 @@ def titlegen(vidpath, stem=None):
 
 	titlepath = u"{0}-title.jpg".format(stem)
 
-	#if not os.access(titlepath, os.W_OK):
-	#	print "file can not be written: {0!r}".format(titlepath)
-	#	continue
-
 	# check meta.json
 	metapath = u"{0}-meta.json".format(os.path.splitext(vidpath)[0])
-	if not os.access(metapath, os.W_OK):
-		raise IOError("file can not be written: {0!r}".format(metapath))
+	if not os.access(os.path.dirname(metapath), os.W_OK):
+		raise IOError("directory can not be written to: {0!r}".format(metapath))
 	
 	if not os.path.exists(metapath):
 		rv = subprocess.call(
@@ -116,18 +113,18 @@ def titlegen(vidpath, stem=None):
 	if not any(stream['codec_type'] == 'video' for stream in meta['streams']):
 		raise ValueError("not a video")
 
-	if os.path.exists(titlepath):
-		raise IOError("title file already exists")
+	if not os.path.exists(titlepath):
+		position = float(meta['format']['duration']) * (1 - 1/goldenratio)
+		im = get_frame(vidpath, position, 360)
 
-	position = float(meta['format']['duration']) * (1 - 1/goldenratio)
+		#smallsize = (640, 360)
+		#smallsize = aspect_resize(im.size, )
+		#im = im.resize(smallsize, Image.ANTIALIAS)
+		im.save(titlepath, quality=75)
 
-	im = get_frame(vidpath, position, 360)
-
-	#smallsize = (640, 360)
-	#smallsize = aspect_resize(im.size, )
-	#im = im.resize(smallsize, Image.ANTIALIAS)
-
-	im.save(titlepath, quality=75)
+	else:
+		pass
+		#raise IOError("title file already exists")
 
 	return titlepath
 
@@ -195,8 +192,9 @@ def apply_one((vidpath, stem, callback)):
 		m = re.match(r'(.*)/(vpnonline)/(.*)$', titlepath)
 		if m:
 			altpath = "{0}/pub/{2}".format(m.groups())
-			os.makedirs(os.path.dirname(altpath))
-			os.link(titlepath, altpath)
+			if not os.path.exists(altpath) or (os.stat(titlepath).ST_INO != os.stat(altpath).ST_INO):
+				os.makedirs(os.path.dirname(altpath))
+				os.link(titlepath, altpath)
 		else:
 			altpath = titlepath
 
