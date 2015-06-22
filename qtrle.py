@@ -147,7 +147,7 @@ if __name__ == '__main__':
 	framecount = 0
 	for chunk in get_chunks(mdat):
 		print "decoding frame", framecount		
-		(mx, my) = decode_chunk(frame, chunk, update=True)
+		(mx, my, isfull) = decode_chunk(frame, chunk, update=True)
 
 		# detect resolution
 		if framecount == 0:
