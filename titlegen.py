@@ -189,14 +189,24 @@ def apply_one((vidpath, stem, callback)):
 
 		print u"   -> {0!r}".format(titlepath)
 
-		m = re.match(r'(.*)/(vpnonline)/(.*)$', titlepath)
+		m = re.match(r'(vpnonline)/(.*)$', titlepath)
 		if m:
-			altpath = "{0}/pub/{2}".format(m.groups())
-			if not os.path.exists(altpath) or (os.stat(titlepath).ST_INO != os.stat(altpath).ST_INO):
+			altpath = "pub/{1}".format(*m.groups())
+
+			if not os.path.exists(os.path.dirname(altpath)):
 				os.makedirs(os.path.dirname(altpath))
+
+			if not os.path.exists(altpath) or (os.stat(titlepath).st_ino != os.stat(altpath).st_ino):
+				if os.path.exists(altpath):
+					print "exists: {0}".format(altpath)
+					os.unlink(altpath)
 				os.link(titlepath, altpath)
+				print "linking to {0} from {1}".format(titlepath, altpath)
 		else:
 			altpath = titlepath
+
+		if altpath != titlepath:
+			print u"   -> {0!r}".format(altpath)
 
 		if callback is not None:
 			callback(altpath)
