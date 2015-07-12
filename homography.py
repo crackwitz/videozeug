@@ -5,7 +5,6 @@ import numpy as np
 import numexpr as ne
 import cv2
 import pprint; pp = pprint.pprint
-
 import ffwriter
 
 headless = False
@@ -60,11 +59,8 @@ try:
 
 		cv2.warpPerspective(src=scaledframe, M=H, dsize=outsize, dst=straightframe, flags=cv2.INTER_LINEAR) # inverted above: | cv2.WARP_INVERSE_MAP)
 
-		straightframe += 0.5
-		np.clip(straightframe, 0, 255, out=straightframe)
-
-		outframe[:,:,2] = straightframe
-		outframe[:,:,3] = straightframe
+		np.clip(straightframe, 0.0, 255.0, out=straightframe)
+		outframe[:,:,2] = outframe[:,:,3] = straightframe
 
 		outvid.write(outframe)
 
