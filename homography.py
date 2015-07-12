@@ -6,6 +6,8 @@ import numexpr as ne
 import cv2
 import pprint; pp = pprint.pprint
 
+import ffwriter
+
 headless = False
 
 corners = sys.argv[1]
@@ -28,20 +30,21 @@ imax = np.float32(255.0)
 scale = np.float32(255) / (imax-imin)
 
 invid = cv2.VideoCapture(invidname)
-outvid = cv2.VideoWriter(outvidname, -1, 25, outsize)
+#outvid = cv2.VideoWriter(outvidname, -1, 25, outsize)
+outvid = ffwriter.FFWriter(outvidname, 25, outsize, pixfmt='bgra', codec='qtrle', moreflags='-g 250 -loglevel 32')
 
 assert invid.isOpened()
 assert outvid.isOpened()
 
-assert inw == int(invid.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
-assert inh == int(invid.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
+assert inw == int(invid.get(cv2.CAP_PROP_FRAME_WIDTH))
+assert inh == int(invid.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
 if not headless:
 	cv2.namedWindow("straight", cv2.WINDOW_NORMAL)
 	cv2.resizeWindow("straight", outsize[0] // 2, outsize[1] // 2)
 
 #inframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
-outframe = np.zeros(outsize[::-1] + (3,), dtype=np.uint8)
+outframe = np.zeros(outsize[::-1] + (4,), dtype=np.uint8)
 scaledframe = np.zeros(insize[::-1], dtype=np.float32)
 straightframe = np.zeros(outsize[::-1], dtype=np.float32)
 framecount = 0
@@ -50,7 +53,7 @@ try:
 		(rv,inframe) = invid.read()
 		if not rv: break
 		framecount += 1
-		pos_msec = invid.get(cv2.cv.CV_CAP_PROP_POS_MSEC)
+		pos_msec = invid.get(cv2.CAP_PROP_POS_MSEC)
 
 		redplane = inframe[:,:,2]
 		ne.evaluate("(redplane - imin) * scale", out=scaledframe)
@@ -61,13 +64,11 @@ try:
 		np.clip(straightframe, 0, 255, out=straightframe)
 
 		outframe[:,:,2] = straightframe
+		outframe[:,:,3] = straightframe
 
 		outvid.write(outframe)
 
-		sys.stdout.write("\rframe {0} at {1:.1f} secs".format(framecount-1, pos_msec * 1e-3))
-		sys.stdout.flush()
-
-		if not headless and framecount % 5 == 0:
+		if not headless and framecount % 10 == 0:
 			cv2.imshow("straight", outframe)
 			key = cv2.waitKey(1)
 			if key == -1: continue
