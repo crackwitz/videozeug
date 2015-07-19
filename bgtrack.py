@@ -17,7 +17,7 @@ lk_params = dict(
 feature_params = dict(
 	maxCorners = 500,
 	qualityLevel = 0.3,
-	minDistance = 7,
+	minDistance = 9,
 	blockSize = 7
 )
 
@@ -69,6 +69,41 @@ def scale_frame(frame):
 	framegray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 	return framegray
 
+def flow_frame_farneback(tracks, prevframe, curframe):
+
+	flow = cv2.calcOpticalFlowFarneback(
+		prevframe, curframe,
+		pyr_scale=0.5,
+		levels=7,
+		winsize=5,
+		iterations=3,
+		poly_n=5,
+		poly_sigma=1.1,
+		flow=None,
+		flags=0
+	)
+
+	cflow = flow.view(np.complex64).squeeze() / framescale
+	angle = np.angle(cflow) % (2*np.pi)
+	magnitude = np.abs(cflow)
+
+	# HSV
+	#vis = cv2.cvtColor(curframe, cv2.COLOR_GRAY2BGR)
+	vis = np.zeros(flow.shape[:2] + (3,), dtype=np.uint8)
+
+	vis[:,:,0] = np.uint8(angle / np.pi * 90)
+	vis[:,:,1] = 255
+	vis[:,:,2] = magnitude / (magnitude + 10) * 255
+
+	vis = cv2.cvtColor(vis, cv2.COLOR_HSV2BGR)
+
+	return vis
+
+def fix8(x):
+	if isinstance(x, (int, float)):
+		return int(0.5 + x * (1<<8))
+	else:
+		return tuple(np.int32(np.array(x) * (1<<8) + 0.5))
 
 def flow_frame(tracks, prevframe, curframe):
 	assert prevframe is not None and curframe is not None
@@ -76,12 +111,12 @@ def flow_frame(tracks, prevframe, curframe):
 	vis = cv2.cvtColor(curframe, cv2.COLOR_GRAY2BGR)
 
 	if len(tracks) > 0:
-		if 0:
+		if 1:
 			p0 = np.float32([tr[-1] for tr in tracks]).reshape(-1, 1, 2)
 		else:
 			nx,ny = 20,15
 			p0 = np.concatenate(np.indices((nx,ny)).swapaxes(0,2), axis=0)
-			p0 = ((p0 + 0.5) * (capw / nx, caph / ny)).astype(np.float32)
+			p0 = ((p0 + 0.5) * (capw / nx * framescale, caph / ny * framescale)).astype(np.float32)
 			tracks = [[pt] for pt in p0]
 			p0.shape = (-1, 1, 2)
 
@@ -100,7 +135,7 @@ def flow_frame(tracks, prevframe, curframe):
 				del tr[0]
 
 			new_tracks.append(tr)
-			cv2.circle(vis, (x, y), 2, (0, 255, 0), -1)
+			cv2.circle(vis, fix8([x, y]), fix8(2), (0, 255, 0), -1, shift=8, lineType=cv2.LINE_AA)
 
 		tracks = new_tracks
 		#cv2.polylines(vis, [np.int32(tr) for tr in tracks], False, (0, 255, 0), thickness=1)
@@ -108,32 +143,34 @@ def flow_frame(tracks, prevframe, curframe):
 		delta = p1 - p0
 		p1 = p0 + delta * 5
 
+		center = np.array([capw, caph]) * 0.5 * framescale
+
 		p0 = p0[good].reshape((-1, 2))
 		p1 = p1[good].reshape((-1, 2))
 		delta = p1 - p0
-		p0[:,:] = (capw/2, caph/2)
+		p0[:,:] = center
 		p0 += delta
 		p1 = p0
 
 		if len(delta):
 			#import pdb; pdb.set_trace()
-			clusterradius = 20.0
+			clusterradius = (caph / 20) * framescale
 			(centroids, labels) = clustering(clusterradius, delta)
-			h = {}
-			for i in labels:
-				if i not in h: h[i] = 0
-				h[i] += 1
-
-			best = max(h, key=lambda k: h[k])
-			(bestx, besty) = np.int32(centroids[best] + (capw/2, caph/2))
+			h = np.bincount(labels)
+			best = np.argmax(h)
+			(bestx, besty) = bestp = centroids[best] + center
 
 			#p1 = p0 + delta * 1
 			#import pdb; pdb.set_trace()
-			cv2.polylines(vis, np.concatenate([p0.reshape((-1, 1, 2)),p1.reshape((-1, 1, 2))], axis=1).astype(np.int32), False, (0, 0, 255), thickness=3)
+			cv2.polylines(vis, fix8(np.concatenate([p0.reshape((-1, 1, 2)),p1.reshape((-1, 1, 2))], axis=1)), False, (0, 0, 255), thickness=3, shift=8, lineType=cv2.LINE_AA)
 
-			cv2.line(vis, (bestx - 10, besty), (bestx + 10, besty), (255, 255, 0))
-			cv2.line(vis, (bestx, besty - 10), (bestx, besty + 10), (255, 255, 0))
-			cv2.circle(vis, (bestx, besty), int(clusterradius), (255, 255, 0), thickness=2)
+			cv2.line(vis, fix8(center - (5, 0)), fix8(center + (5, 0)), (255, 0, 0), shift=8, lineType=cv2.LINE_AA)
+			cv2.line(vis, fix8(center - (0, 5)), fix8(center + (0, 5)), (255, 0, 0), shift=8, lineType=cv2.LINE_AA)
+
+			cv2.line(vis, fix8(bestp - (10, 0)), fix8(bestp + (10, 0)), (255, 0, 255), shift=8, lineType=cv2.LINE_AA)
+			cv2.line(vis, fix8(bestp - (0, 10)), fix8(bestp + (0, 10)), (255, 0, 255), shift=8, lineType=cv2.LINE_AA)
+
+			cv2.circle(vis, fix8((bestx, besty)), fix8(clusterradius), (255, 0, 255), thickness=2, shift=8, lineType=cv2.LINE_AA)
 
 
 	# todo: find more tracks
@@ -152,14 +189,18 @@ def flow_frame(tracks, prevframe, curframe):
 
 if __name__ == '__main__':
 	source = 'V:\\Video AG\\archiv\\14ws-infin-141014\\14ws-infin-141014-dozent.mp4'
-	source = 0
 	# 0:12:40
+	source = 0
 
-	framescale = 1 #0.5
+	if sys.argv[1:]:
+		source = sys.argv[1]
+
+	framescale = 0.25 #0.5
 	prevframe = None
 	curframe = None
 	tracks = []
 	tracklen = 10
+	flowmethod = 0
 
 	numthreads = cv2.getNumberOfCPUs()
 
@@ -171,14 +212,20 @@ if __name__ == '__main__':
 
 	vid = cv2.VideoCapture(source)
 	#vid.set(cv2.CAP_PROP_FPS, 15)
-	if isinstance(source, str):
-		vid.set(cv2.CAP_PROP_POS_MSEC, 1000 * (12*60 + 40))
+	#if isinstance(source, str):
+	#	vid.set(cv2.CAP_PROP_POS_MSEC, 1000 * (12*60 + 40))
+
+	vid.set(cv2.CAP_PROP_POS_MSEC, 1000 * (10*60 + 0))
+
+	if source == 0:
+		vid.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+		vid.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 	capw = vid.get(cv2.CAP_PROP_FRAME_WIDTH)
 	caph = vid.get(cv2.CAP_PROP_FRAME_HEIGHT)
 
 	cv2.namedWindow("source", cv2.WINDOW_NORMAL)
-	cv2.resizeWindow("source", int(capw * framescale), int(caph * framescale))
+	cv2.resizeWindow("source", int(capw), int(caph))
 
 	while True:
 		#print "c1:", len(qscaling) < scalerpool._processes
@@ -192,13 +239,20 @@ if __name__ == '__main__':
 		while len(qscaling) > 0 and qscaling[0].ready() and len(qflow) < flowpool._processes:
 			prevframe = curframe
 			curframe = qscaling.popleft().get()
+			cv2.imshow("scaled", curframe)
 			if prevframe is not None and curframe is not None:
-				task = flowpool.apply_async(flow_frame, (tracks, prevframe, curframe))
+				if flowmethod == 0:
+					task = flowpool.apply_async(flow_frame, (tracks, prevframe, curframe))
+				elif flowmethod == 1:
+					task = flowpool.apply_async(flow_frame_farneback, (tracks, prevframe, curframe))
 				qflow.append(task)
 
 		#print "c3:", len(qflow) > 0, len(qflow) > 0 and qflow[0].ready()
 		while len(qflow) > 0 and qflow[0].ready():
-			(tracks, vis) = qflow.popleft().get()
+			if flowmethod == 0:
+				(tracks, vis) = qflow.popleft().get()
+			elif flowmethod == 1:
+				vis = qflow.popleft().get()
 			cv2.imshow("source", vis)
 
 		key = cv2.waitKey(1)
