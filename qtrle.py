@@ -146,16 +146,21 @@ if __name__ == '__main__':
 
 	# iterate chunks
 	framecount = 0
+	dobreak = False
 	for chunk in get_chunks(mdat):
-		print "decoding frame", framecount		
-		(mx, my, isfull) = decode_chunk(frame, chunk, update=True)
+		print "decoding frame", framecount
+		try:
+			(mx, my, isfull) = decode_chunk(frame, chunk, update=True)
+		except Exception, e:
+			print "Exception:", e
+			dobreak = True
 
 		# detect resolution
 		if framecount == 0:
 			print "detected resolution {0} x {1}".format(mx, my)
 			assert mx <= width and my <= height
 			(width, height) = (mx, my)
-			frame = frame[:height, :width]
+			frame = frame[:height, :width].copy()
 
 			if outvid is not None:
 				outvid = ffwriter.FFWriter(outvid, 25, (width, height), pixfmt='argb', codec='qtrle', moreflags='-g 1500')
@@ -165,3 +170,6 @@ if __name__ == '__main__':
 			outvid.write(frame)
 
 		framecount += 1
+
+		if dobreak:
+			break
