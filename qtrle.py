@@ -158,7 +158,7 @@ if __name__ == '__main__':
 			frame = frame[:height, :width]
 
 			if outvid is not None:
-				outvid = ffwriter.FFWriter(outvid, 25, (width, height), codec='qtrle', moreflags='-g 1500')
+				outvid = ffwriter.FFWriter(outvid, 25, (width, height), pixfmt='argb', codec='qtrle', moreflags='-g 1500')
 				assert outvid.isOpened()
 
 		if outvid:
