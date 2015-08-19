@@ -8,6 +8,7 @@ import numpy as np
 
 from filebuffer import *
 import mp4select
+import ffwriter
 
 # http://wiki.multimedia.cx/index.php?title=Apple_QuickTime_RLE
 
@@ -135,7 +136,7 @@ if __name__ == '__main__':
 
 	infname = sys.argv[3]
 
-	outvid = (len(sys.argv[1:]) > 3) and sys.argv[4]
+	outvid = sys.argv[4] if len(sys.argv[1:]) > 3 else None
 
 	buf = FileBuffer(infname)
 	
@@ -156,11 +157,11 @@ if __name__ == '__main__':
 			(width, height) = (mx, my)
 			frame = frame[:height, :width]
 
-			if outvid is not False:
-				outvid = cv2.VideoWriter(outvid, -1, 25, (width, height))
+			if outvid is not None:
+				outvid = ffwriter.FFWriter(outvid, 25, (width, height), codec='qtrle', moreflags='-g 1500')
 				assert outvid.isOpened()
 
 		if outvid:
-			outvid.write(frame[:,:,::-1])
+			outvid.write(frame)
 
 		framecount += 1
