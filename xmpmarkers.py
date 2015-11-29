@@ -82,7 +82,12 @@ def extract(xmpdata):
 
 	### GET MARKER NODE
 	res = tracks.xpath("./rdf:Bag/rdf:li/rdf:Description[@xmpDM:trackName='Markers']", namespaces=nsmap)
-	(markernode,) = res
+	try:
+		(markernode,) = res
+	except Exception, e:
+		print e
+		return data
+
 	markerframerate = xpath_value(markernode, "@xmpDM:frameRate", xmpfrac)
 
 	### GET CHAPTER MARKERS
