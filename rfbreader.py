@@ -391,7 +391,7 @@ if __name__ == '__main__':
 
 	fps = 25
 	fourcc = -1
-	fourcc = cv2.cv.CV_FOURCC(*"LAGS")
+	fourcc = cv2.VideoWriter_fourcc(*"LAGS")
 	outvid = cv2.VideoWriter(outfname, fourcc, fps, (cropw, croph))
 	currentframe = 0
 	fps = Fraction(fps)
