@@ -89,7 +89,10 @@ def select(selector, buf):
 			if content[:len(prefix)].str() != prefix:
 				continue
 			else: # did match, chop it off
-				content = content[len(prefix):]
+				#content = content[len(prefix):]
+				# trecmarkers: should not be removed, should just match...
+				# maybe something else needs this chopped?
+				pass
 
 		if (spos is not None):
 			if spos == 0:
