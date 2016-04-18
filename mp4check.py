@@ -66,7 +66,7 @@ class Atom(object):
 		self.buf     = buf
 	
 	def __repr__(self, indent=0, index=0):
-		label = self.type
+		label = self.type if all(32 <= ord(c) < 128 for c in self.type) else repr(self.type)
 		
 		sublabel = ''
 		
@@ -157,7 +157,7 @@ def handler(*types):
 #	return sub
 
 @handler('elst')
-def parse_elst(type, offset, content, indent):
+def parse_elst(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#elst
 	p = 0
 	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
@@ -172,7 +172,7 @@ def parse_elst(type, offset, content, indent):
 	assert (len(entries) == count)
 	p += 12*count
 	
-	children = parse_sequence(None, offset + p, content[p:], indent=indent+1)
+	children = parse_sequence(None, offset + p, content[p:], path)
 
 	return [
 		("edit list",
@@ -188,7 +188,7 @@ def mactime(timestamp):
 	return unixtimestamp
 
 @handler('mvhd')
-def parse_mvhd(type, blockoffset, content, indent):
+def parse_mvhd(type, blockoffset, content, path):
 	res = Record()
 	
 	# http://xhelmboyx.tripod.com/formats/mp4-layout.txt
@@ -238,13 +238,7 @@ def parse_mvhd(type, blockoffset, content, indent):
 	return res
 
 @handler('tkhd')
-def parse_tkhd(type, offset, content, indent):
-	if os.getenv("DEBUG"):
-		#import pdb; pdb.set_trace()
-		pass
-	else:
-		return
-
+def parse_tkhd(type, offset, content, path):
 	version = (content >> ">B")
 	flags = byteint(content >> ">BBB")
 	flags = Record(
@@ -297,7 +291,7 @@ def parse_tkhd(type, offset, content, indent):
 	)
 
 @handler('mdhd')
-def parse_mdhd(type, offset, content, indent):
+def parse_mdhd(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#mdhd
 	
 	p = 0
@@ -324,11 +318,38 @@ def parse_mdhd(type, offset, content, indent):
 		quality = quality,
 	)
 
-@handler('dinf')
-def handle_dinf(type, offset, content, indent):
+@handler('dref')
+def handle_dref(type, offset, content, path):
 	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
-	return Record(
+	version = (content >> ">B")
+	flags = (content >> ">BBB")
+	numentries = (content >> ">I")
+	assert flags == (0,0,0)
 
+	entries = []
+	for i in xrange(numentries):
+		oldpos = content.pos
+		esize = (content >> ">I")
+		etype = (content >> ">4s")
+		eversion = (content >> ">B")
+		eflags = (content >> ">BBB")
+
+		data = content[content.pos : oldpos+esize]
+
+		content.pos = oldpos + esize
+
+		entries.append(Record(
+			type=etype,
+			version=eversion,
+			flags=eflags,
+			data=data.str()
+		))
+
+	assert content.pos == content.len
+
+	return Record(
+		version=version,
+		entries=entries
 	)
 
 def nibbles(value, n=0):
@@ -344,7 +365,7 @@ def byteint(values):
 	return res
 
 @handler('stsd')
-def parse_hdlr(type, offset, content, indent):
+def parse_hdlr(type, offset, content, path):
 	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
 
 	version = nibbles(content >> ">B", 2)
@@ -429,12 +450,12 @@ def parse_hdlr(type, offset, content, indent):
 
 
 @handler('co64')
-def parse_co64(type, offset, content, indent):
+def parse_co64(type, offset, content, path):
 	return content
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#co64
 
 @handler('stco')
-def parse_stco(type, offset, content, indent):
+def parse_stco(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stco
 	# http://atomicparsley.sourceforge.net/mpeg-4files.html
 	
@@ -453,7 +474,7 @@ def parse_stco(type, offset, content, indent):
 	assert (len(chunks) == count)
 	p += 4*count
 	
-	children = parse_sequence(None, offset + p, content[p:], indent=indent+1)
+	children = parse_sequence(None, offset + p, content[p:], path)
 
 	return [
 		Record(
@@ -465,7 +486,7 @@ def parse_stco(type, offset, content, indent):
 
 
 @handler('stss')
-def parse_stss(type, offset, content, indent):
+def parse_stss(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stss
 	
 	p = 0
@@ -480,7 +501,7 @@ def parse_stss(type, offset, content, indent):
 	assert (len(chunks) == count)
 	p += 4*count
 	
-	children = parse_sequence(None, offset + p, content[p:], indent=indent+1)
+	children = parse_sequence(None, offset + p, content[p:], path)
 
 	return [
 		Record(
@@ -492,7 +513,7 @@ def parse_stss(type, offset, content, indent):
 
 
 @handler('stsz')
-def parse_stsz(type, offset, content, indent):
+def parse_stsz(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stsz
 	
 	p = 0
@@ -511,7 +532,7 @@ def parse_stsz(type, offset, content, indent):
 	else:
 		sizes = abbrevlist()
 	
-	children = parse_sequence(None, offset + p, content[p:], indent=indent+1)
+	children = parse_sequence(None, offset + p, content[p:], path)
 	
 	return [
 		Record(
@@ -525,7 +546,7 @@ def parse_stsz(type, offset, content, indent):
 
 
 @handler('ftyp')
-def parse_ftyp(type, offset, content, indent):
+def parse_ftyp(type, offset, content, path):
 	brand = content[0:4].str()
 	version = struct.unpack(">BBBB", content[4:8].str())
 	compatibles = [
@@ -542,7 +563,7 @@ def parse_ftyp(type, offset, content, indent):
 	)
 
 @handler('vmhd')
-def parse_vmhd(type, offset, content, indent):
+def parse_vmhd(type, offset, content, path):
 	version = nibbles(content >> ">B", 2)
 
 	flags = byteint(content >> ">BBB")
@@ -571,11 +592,17 @@ def parse_vmhd(type, offset, content, indent):
 	)
 
 @handler('meta')
-def parse_meta(type, blockoffset, block, indent):
-	return parse_sequence(type, blockoffset+4, block[4:], indent)
+def parse_meta(type, blockoffset, block, path):
+	if path == 'moov.udta.meta'.split('.'):
+		assert block.fp.name.endswith('.mp4') # should happen in MP4 files only
+		assert block[0:4].str() == '\x00'*4
+		return parse_sequence(type, blockoffset+4, block[4:], path)
+	else:
+		# anything else: just a container
+		return parse_sequence(type, blockoffset, block, path)
 
 @handler('data')
-def parse_data(type, blockoffset, content, indent):
+def parse_data(type, blockoffset, content, path):
 	p = 0
 	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
 	(flags,)   = struct.unpack('>3s', content[p:p+3].str()); p += 3
@@ -593,7 +620,7 @@ def UUID(buffer):
 	return "%s-%s-%s-%s-%s" % (s[0:8], s[8:12], s[12:16], s[16:20], s[20:32])
 
 @handler('uuid', 'DATA')
-def parse_uuid(type, blockoffset, content, indent):
+def parse_uuid(type, blockoffset, content, path):
 	(uuid,) = struct.unpack('>16s', content[:16].str())
 	
 	uuid = UUID(uuid)
@@ -609,14 +636,14 @@ def parse_uuid(type, blockoffset, content, indent):
 	return result
 
 @handler('ilst')
-def parse_ilst(type, blockoffset, block, indent):
+def parse_ilst(type, blockoffset, block, path):
 	res = []
 
-	for atom in parse_sequence(type, blockoffset, block, indent):
+	for atom in parse_sequence(type, blockoffset, block, path):
 		(type, position, content) = (atom.type, atom.start, atom.content)
 		
 		if (type == 'trkn') or (type[0] == '\xa9'):
-			content = parse_sequence(type, position, content, indent+1)
+			content = parse_sequence(type, position, content, path=path+[type])
 			
 			assert len(content) == 1
 			
@@ -637,8 +664,8 @@ def parse_ilst(type, blockoffset, block, indent):
 	
 	return res
 
-@handler(None, 'moov', 'trak', 'edts', 'mdia', 'minf', 'stbl', 'udta', 'TSCM')
-def parse_sequence(type, blockoffset, block, indent=0):
+@handler(None, 'moov', 'trak', 'edts', 'mdia', 'dinf', 'minf', 'stbl', 'udta', 'TSCM')
+def parse_sequence(type, blockoffset, block, path=[]):
 	start = 0
 	
 	res = []
@@ -672,14 +699,15 @@ def parse_sequence(type, blockoffset, block, indent=0):
 			raise AtomIncomplete(type, blockoffset+start, blockoffset+start+size, blockoffset+start+contentoffset+content.len)
 
 		if verbose:
-			print lineindent(indent) + "%s  [@%d + %d]" % (type, blockoffset+start, size)
+			label = type if all(32 <= ord(c) < 128 for c in type) else repr(type)
+			print lineindent(len(path)) + "%s  [@%d + %d]" % (label, blockoffset+start, size)
 		
 		if type in handlers:
 			content = handlers[type](
 				type,
 				blockoffset+start+contentoffset,
 				content,
-				indent+1
+				path+[type]
 				)
 
 		res.append(
