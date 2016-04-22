@@ -8,9 +8,14 @@ import glob
 import array
 import ctypes
 import time, datetime, calendar
+import numpy as np
 from funcs import *
 from filetools import *
 import trecformat
+
+# TODO: while parsing, allow access to tree, to query other atoms
+
+# TODO: need a "table" type (around dict, list, ...) for display
 
 # ======================================================================
 # MP4/MOV constants
@@ -159,27 +164,32 @@ def handler(*types):
 @handler('elst')
 def parse_elst(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#elst
-	p = 0
-	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
-	flags      = struct.unpack('>3B', content[p:p+3].str()); p += 3
-	(count,)   = struct.unpack('>I', content[p:p+4].str()); p += 4
+	version = (content >> ">B")
+	flags   = (content >> ">3B")
+	count   = (content >> ">I")
+	assert version == 0
+	assert flags == (0,0,0)
 
-	assert p + 12*count <= content.len
-	entries = array.array("I", content[p:p+12*count].str())
-	entries.byteswap()
-	entries = zip(entries[0::3], entries[1::3], entries[2::3])
-	entries = abbrevlist(entries)
-	assert (len(entries) == count)
-	p += 12*count
+	assert content.pos + 12*count == content.len
+
+	entries = np.fromstring(content.read(), dtype='>i4,>i4,>i4'
+		#[('duration', '>i4'), ('start', '>i4'), ('rate', '>i4')]
+	)#.astype('i4,i4,f4')
+
+	entries = [
+		{'duration': duration, 'start': start, 'rate': rate / 2**16}
+		for (duration, start, rate) in entries
+	]
+	#entries['f2'] /= 2**16
+	#entries = map(tuple, entries)
+
+	#entries = array.array("I", content[p:p+12*count].str())
+	#entries.byteswap()
+	#entries = zip(entries[0::3], entries[1::3], entries[2::3])
+	#entries = abbrevlist(entries)
+	#assert (len(entries) == count)
 	
-	children = parse_sequence(None, offset + p, content[p:], path)
-
-	return [
-		("edit list",
-			version, flags,
-			entries
-		),
-	] + children
+	return entries
 
 def mactime(timestamp):
 	epoch = datetime.datetime(1904, 1, 1, 0, 0, 0, 0, )
@@ -294,22 +304,21 @@ def parse_tkhd(type, offset, content, path):
 def parse_mdhd(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#mdhd
 	
-	p = 0
-	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
-	(flags,)   = struct.unpack('>3s', content[p:p+3].str()); p += 3
-	
-	if version == 0:
-		(ctime, mtime, scale, duration) = struct.unpack(">IIII", content[p:p+16].str()); p += 16
-	elif version == 1:
-		(ctime, mtime, scale, duration) = struct.unpack(">QQIQ", content[p:p+28].str()); p += 28
-	else:
-		assert 0
+	version = (content >> ">B")
+	flags   = (content >> ">BBB")
 
-	(language, quality) = struct.unpack(">HH", content[p:p+4].str()); p += 4
+	assert version in (0, 1)
+	assert flags == (0,0,0)
+
+	if version == 0:
+		(ctime, mtime, scale, duration) = (content >> ">IIII")
+	elif version == 1:
+		(ctime, mtime, scale, duration) = (content >> ">QQIQ")
+
+	(language, quality) = (content >> ">HH")
 	
 	return Record(
 		version = version,
-		flags = flags,
 		ctime = ctime,
 		mtime = mtime,
 		scale = scale,
@@ -365,7 +374,7 @@ def byteint(values):
 	return res
 
 @handler('stsd')
-def parse_hdlr(type, offset, content, path):
+def parse_stsd(type, offset, content, path):
 	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
 
 	version = nibbles(content >> ">B", 2)
@@ -462,87 +471,71 @@ def parse_stco(type, offset, content, path):
 	# multiple stco atoms may exist
 	# thsese chunks (offsets) need to be adjusted when relocating the 'moov' atom
 	
-	p = 0
-	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
-	(flags,)   = struct.unpack('>3s', content[p:p+3].str()); p += 3
-	(count,)   = struct.unpack('>I', content[p:p+4].str()); p += 4
-	
-	assert p + 4*count <= content.len
-	chunks = array.array("I", content[p:p+4*count].str())
-	chunks.byteswap()
-	chunks = abbrevlist(chunks)
-	assert (len(chunks) == count)
-	p += 4*count
-	
-	children = parse_sequence(None, offset + p, content[p:], path)
+	version = (content >> '>B')
+	flags   = (content >> '>BBB')
+	count   = (content >> '>I')
 
-	return [
-		Record(
-			version = version,
-			flags = flags,
-			chunks = chunks
-		)
-	] + children
+	assert flags == (0,0,0)
+	
+	offsets = array.array("I", content.read())
+	offsets.byteswap()
+	offsets = abbrevlist(offsets)
+	assert (len(offsets) == count)
+	
+	return Record(
+		version = version,
+		offsets = offsets
+	)
 
 
 @handler('stss')
 def parse_stss(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stss
 	
-	p = 0
-	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
-	(flags,)   = struct.unpack('>3s', content[p:p+3].str()); p += 3
-	(count,)   = struct.unpack('>I', content[p:p+4].str()); p += 4
+	version = (content >> '>B')
+	flags   = (content >> ">BBB")
+	count   = (content >> ">I")
+
+	assert flags == (0,0,0)
 	
-	assert p + 4*count <= content.len
-	chunks = array.array("I", content[p:p+4*count].str())
+	assert content.pos + 4*count == content.len
+
+	chunks = array.array("I", content.read())
 	chunks.byteswap()
 	chunks = abbrevlist(chunks)
 	assert (len(chunks) == count)
-	p += 4*count
 	
-	children = parse_sequence(None, offset + p, content[p:], path)
-
-	return [
-		Record(
-			version = version,
-			flags = flags,
-			chunks = chunks
-		)
-	] + children
+	return Record(
+		version = version,
+		chunks = chunks
+	)
 
 
 @handler('stsz')
 def parse_stsz(type, offset, content, path):
 	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stsz
 	
-	p = 0
-	(version,)    = struct.unpack('>B',  content[p:p+1].str()); p += 1
-	(flags,)      = struct.unpack('>3s', content[p:p+3].str()); p += 3
-	(samplesize,) = struct.unpack('>I',  content[p:p+4].str()); p += 4
-	(count,)      = struct.unpack('>I',  content[p:p+4].str()); p += 4
-	
-	if samplesize == 0:
-		assert p + 4*count <= content.len
-		sizes = array.array("I", content[p:p+4*count].str())
+	version    = (content >> '>B')
+	flags      = (content >> '>BBB')
+	samplesize = (content >> '>I')
+	count      = (content >> '>I')
+
+	assert flags == (0,0,0)
+
+	if samplesize == 0: # different sizes
+		sizes = array.array("I", content.read())
 		sizes.byteswap()
 		sizes = abbrevlist(sizes)
 		assert(len(sizes) == count)
-		p += 4*count
-	else:
-		sizes = abbrevlist()
+
+	else: # all same size
+		sizes = None
 	
-	children = parse_sequence(None, offset + p, content[p:], path)
-	
-	return [
-		Record(
-			version = version,
-			flags = flags,
-			samplesize = samplesize,
-			count = count,
-			sizes = sizes
-		)
-	] + children
+	return Record(
+		version = version,
+		samplesize = samplesize,
+		sizes = sizes
+	)
 
 
 @handler('ftyp')
@@ -592,17 +585,129 @@ def parse_vmhd(type, offset, content, path):
 	)
 
 @handler('meta')
-def parse_meta(type, blockoffset, block, path):
+def parse_meta(type, offset, content, path):
 	if path == 'moov.udta.meta'.split('.'):
-		assert block.fp.name.endswith('.mp4') # should happen in MP4 files only
-		assert block[0:4].str() == '\x00'*4
-		return parse_sequence(type, blockoffset+4, block[4:], path)
+		assert content.fp.name.endswith('.mp4') # should happen in MP4 files only
+		assert content[0:4].str() == '\x00'*4
+		return parse_sequence(type, offset+4, content[4:], path)
 	else:
 		# anything else: just a container
-		return parse_sequence(type, blockoffset, block, path)
+		return parse_sequence(type, offset, content, path)
+
+@handler('hdlr')
+def parse_hdlr(type, offset, content, path):
+	if path[-2:] != ['meta', 'hdlr']:
+		return None # unhandled, use default
+
+	#import pdb; pdb.set_trace()
+	version = (content >> ">B")
+
+	flags = (content >> ">BBB")
+	assert flags == (0,0,0)
+
+	predef = (content >> ">I")
+	assert predef == 0
+
+	htype = (content >> "4s")
+	assert htype == 'mdta'
+
+	reserved = (content >> ">3I")
+	assert reserved == (0,0,0)
+
+	name = content[content.pos:].szstr()
+
+	return Record(
+		version=version,
+		name=name
+	)
+
+@handler('keys')
+def parse_keys(type, offset, content, path):
+	version = (content >> ">B")
+	
+	flags = (content >> ">BBB")
+	assert flags == (0,0,0)
+
+	numentries = (content >> ">I")
+
+	entries = {}
+	index = 1
+	while content.pos < content.len:
+		keysize = (content >> ">I")
+		namespace = (content >> ">4s")
+		value = content.read(keysize-8)
+		entries[index] = (namespace, value)
+		index += 1
+
+	return Record(
+		version=version,
+		entries=entries
+	)
+
+@handler('ilst')
+def parse_ilst(type, offset, content, path):
+	return parse_sequence(type, offset, content, path)
+
+# TODO: do this right
+def parse_ilst(type, offset, content, path):
+	res = Record()
+
+	def visit(key, offset, content, path):
+		key_index, = struct.unpack(">I", key)
+		
+		item = Record()
+
+		children = parse_sequence(None, offset, content, path=path+[key_index])
+
+		# optional item_info atom
+		assert not any(c.type == 'itif' for c in children)
+
+		# optional name atom
+		assert not any(c.type == 'name' for c in children)
+
+		# value
+		value, = [c for c in children if c.type == 'data']
+		item.value = value
+
+		atom.key_index = key_index
+		return atom
+	
+	return {
+		atom.key_index: atom
+		for atom
+		in parse_sequence(type, offset, content, path, use_handler=visit)
+	}
+
+def parse_ilst_old(type, blockoffset, block, path):
+	res = []
+
+	for atom in parse_sequence(type, blockoffset, block, path):
+		(type, position, content) = (atom.type, atom.start, atom.content)
+		
+		if (type == 'trkn') or (type[0] == '\xa9'):
+			content = parse_sequence(type, position, content, path=path+[type])
+			
+			assert len(content) == 1
+			
+#			if type == 'trkn':
+#				# http://code.activestate.com/recipes/496984/
+#				(_a, _b, _c) = content[0] # atom = content[0]; _c = atom.content, which should be a buffer
+#				assert _a == 'data'
+#
+#				import pdb
+#				pdb.set_trace()
+#
+#				_c.content = struct.unpack(">II", _c.content.str())
+			
+		res.append(
+			Atom(position, atom.length, type, content)
+			#(type, position, content)
+		)
+	
+	return res
 
 @handler('data')
-def parse_data(type, blockoffset, content, path):
+def parse_data(type, offset, content, path):
 	p = 0
 	(version,) = struct.unpack('>B', content[p:p+1].str()); p += 1
 	(flags,)   = struct.unpack('>3s', content[p:p+3].str()); p += 3
@@ -635,37 +740,8 @@ def parse_uuid(type, blockoffset, content, path):
 	
 	return result
 
-@handler('ilst')
-def parse_ilst(type, blockoffset, block, path):
-	res = []
-
-	for atom in parse_sequence(type, blockoffset, block, path):
-		(type, position, content) = (atom.type, atom.start, atom.content)
-		
-		if (type == 'trkn') or (type[0] == '\xa9'):
-			content = parse_sequence(type, position, content, path=path+[type])
-			
-			assert len(content) == 1
-			
-#			if type == 'trkn':
-#				# http://code.activestate.com/recipes/496984/
-#				(_a, _b, _c) = content[0] # atom = content[0]; _c = atom.content, which should be a buffer
-#				assert _a == 'data'
-#
-#				import pdb
-#				pdb.set_trace()
-#
-#				_c.content = struct.unpack(">II", _c.content.str())
-			
-		res.append(
-			Atom(position, atom.length, type, content)
-			#(type, position, content)
-		)
-	
-	return res
-
 @handler(None, 'moov', 'trak', 'edts', 'mdia', 'dinf', 'minf', 'stbl', 'udta', 'TSCM')
-def parse_sequence(type, blockoffset, block, path=[]):
+def parse_sequence(type, blockoffset, block, path=[], use_handler=True):
 	start = 0
 	
 	res = []
@@ -701,19 +777,30 @@ def parse_sequence(type, blockoffset, block, path=[]):
 		if verbose:
 			label = type if all(32 <= ord(c) < 128 for c in type) else repr(type)
 			print lineindent(len(path)) + "%s  [@%d + %d]" % (label, blockoffset+start, size)
-		
-		if type in handlers:
-			content = handlers[type](
+
+		newcontent = None		
+
+		if use_handler is True:
+			if type in handlers:
+				newcontent = handlers[type](
+					type,
+					blockoffset+start+contentoffset,
+					content,
+					path+[type]
+				)
+		elif use_handler:
+			newcontent = use_handler(
 				type,
 				blockoffset+start+contentoffset,
 				content,
 				path+[type]
-				)
+			)
 
-		res.append(
-			Atom(blockoffset+start, size, type, content, buf=block[start:start+size])
-			#(type, blockoffset+start, content)
-		)
+		if newcontent is not None:
+			content = newcontent
+
+		item = Atom(blockoffset+start, size, type, content, buf=block[start:start+size])
+		res.append(item)
 
 		start += size
 

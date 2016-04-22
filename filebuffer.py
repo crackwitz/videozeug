@@ -95,6 +95,13 @@ class Buffer(object):
 		res = self.fp.read(width)
 		return res
 
+	def szstr(self):
+		result = self.str()
+		try:
+			return result[:result.index('\x00')]
+		except ValueError:
+			return result
+
 	def __str__(self):
 		return "Buffer[%s]" % fmtslice(self.slice)
 	
