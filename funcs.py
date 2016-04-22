@@ -230,18 +230,19 @@ class Record(odict):
 	def __repr__(self, multiline=True):
 		repritems = [
 			(
+				key,
 				key if isinstance(key, str) else repr(key),
 				pprint.pformat(value)
 			)
-			for key, value in self.iteritems()
+			for key, value in sorted(self.iteritems())
 		]
 
-		maxkeylen = max([len(key) for key,value in repritems]) if repritems else 0
+		maxkeylen = max([len(key) for key,rkey,value in repritems]) if repritems else 0
 		
-		multiline |= any('\n' in rv for rk,rv in repritems)
+		multiline |= any('\n' in rv for k,rk,rv in repritems)
 		
 		args = []
-		for key, (reprkey, reprvalue) in zip(self, repritems):
+		for (key, reprkey, reprvalue) in repritems:
 			if multiline:
 				if '\n' in reprvalue:
 					reprvalue = '\n' + blockindent(4, reprvalue)
