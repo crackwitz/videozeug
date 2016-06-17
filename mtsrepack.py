@@ -18,7 +18,8 @@ formats = {
 
 format = 'mpegts'
 
-use_tempfile = True
+prefix = "video"
+use_tempfile = False
 
 def natsortkey(x):
 	convert = lambda v: int(v, 10) if v.isdigit() else v
@@ -80,6 +81,9 @@ try:
 				i += 1
 				format = sys.argv[i]
 				assert format in formats
+			elif item == '--prefix':
+				i += 1
+				prefix = sys.argv[i]
 			elif item == '--use-temp':
 				use_tempfile = True
 			elif item == '--no-temp':
@@ -98,7 +102,7 @@ try:
 
 	if len(bunches) >= 2 and all(len(bunches[b]) == 1 for b in bunches):
 		bunches = {
-			os.path.join(os.path.dirname(infiles[0]), "video"):
+			os.path.join(os.path.dirname(infiles[0]), prefix):
 				[bunches[b][0] for b in sorted(bunches)]
 		}
 
@@ -141,10 +145,17 @@ try:
 				else:
 					print "temp file not removed; ffmpeg returned", rv
 
-		else:
+		elif 1:
 			p = subprocess.Popen(
-				["ffmpeg", "-y", "-i", "pipe:0", "-codec", "copy", "-f", format, outfile],
-				shell=True, stdin=subprocess.PIPE)
+				["ffmpeg", "-y", "-i", "concat:{0}".format("|".join(bunch)), "-c", "copy", "-f", format, outfile])
+
+			rv = p.wait()
+
+		elif 0:
+			p = subprocess.Popen(
+				["ffmpeg", "-y", "-i", "pipe:0", "-c", "copy", "-f", format, outfile],
+				#shell=True,
+				stdin=subprocess.PIPE)
 
 			cat(bunch, p.stdin)
 
