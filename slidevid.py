@@ -14,7 +14,7 @@ import quaxlist
 
 def waitKeys():
 	while True:
-		key = cv2.waitKey(1)
+		key = cv2.waitKeyEx(1)
 		
 		if key == -1: break
 		
@@ -77,13 +77,22 @@ class SlideCache(object):
 
 class MarkerList(object):
 	def __init__(self, markers):
-		self.markers = markers
-	
+		assert markers == sorted(markers)
+		self.markers = np.array(markers, dtype=[('time', 'f8'), ('slide', 'i4')])
+
 	def __getitem__(self, timeindex):
-		try:
-			return max((t,k) for (t,k) in self.markers if t < timeindex)
-		except ValueError:
+		if isinstance(timeindex, slice):
+			return self.markers[timeindex]
+
+		offset = np.searchsorted(self.markers['time'], timeindex)
+
+		if offset < len(self.markers) and timeindex == self.markers[offset]['time']:
+			offset += 1
+
+		if offset == 0:
 			return None
+		else:
+			return self.markers[offset-1]
 	
 	def __len__(self):
 		return len(self.markers)
@@ -105,9 +114,9 @@ if __name__ == '__main__':
 	fgslides = [] # list of glob patterns
 
 	headless = False
-	fourcc = cv2.cv.FOURCC(*"MJPG")
+	fourcc = cv2.VideoWriter_fourcc(*"MJPG")
 	fourcc = -1
-	fourcc = cv2.cv.FOURCC(*"LAGS")
+	fourcc = cv2.VideoWriter_fourcc(*"LAGS")
 	#fourcc = cv2.cv.FOURCC(*"TSCC")
 	fps = 25
 	minlastslide = 300.0
@@ -156,7 +165,7 @@ if __name__ == '__main__':
 				fourcc = -1
 			else:
 				assert len(fourcc) == 4
-				fourcc = cv2.cv.FOURCC(*fourcc)
+				fourcc = cv2.VideoWriter_fourcc(*fourcc)
 		
 		elif arg == '-fps':
 			i += 1
