@@ -41,6 +41,11 @@ def get_chunks(buffer):
 		buffer.pos += chunksize-4
 		yield chunk
 
+def ilen(seq):
+	count = 0
+	for x in seq:
+		count += 1
+	return count
 
 def decode_chunk(frame, chunk, update=False):
 	pixfmtstr = {'argb': '>BBBB', 'rgb24': '>BBB'}[pixfmt]
@@ -164,8 +169,8 @@ if __name__ == '__main__':
 	parser.add_argument("infile", type=str, help="input video file")
 	parser.add_argument("outfile", type=str, nargs='?', default=None, help="output video file")
 	parser.add_argument('--size', dest='size', type=str, default=None, metavar="WxH", help="initial resolution")
-	parser.add_argument('--pixfmt', dest='pixfmt', type=str, default='argb', help="aupported: argb, rgb24")
-	parser.add_argument('--fps', dest='fps', type=float, default=25, nargs=1, help="frames per second")
+	parser.add_argument('--pixfmt', dest='pixfmt', type=str, default=None, help="aupported: argb, rgb24")
+	parser.add_argument('--fps', dest='fps', type=float, default=None, nargs=1, help="frames per second")
 	parser.add_argument('--headless', dest='headless', action="store_true", help="don't show output window")
 
 	args = parser.parse_args()
@@ -176,29 +181,86 @@ if __name__ == '__main__':
 	if outfname is None:
 		outfname = "{}-decoded.mov".format(*os.path.splitext(infname))
 
+	# assumptions
+	width = height = 0
+	fps = 0
+	pixfmt = None
+	totalframes = None
+
+	# read input file
+	buf = FileBuffer(infname)
+	(mdat,) = mp4select.select("mdat", buf)
+
+	# check for MOOV, MDHD (for time base), STSD (spatial metadata), STTS (frame durations), STSS (keyframes)
+	got_moov = list(mp4select.select('moov', buf))
+	if got_moov:
+		try:
+			import mp4check
+			tree = mp4check.parse(buf)
+
+			# mdhd.scale
+			mdhd = mp4check.select(tree, 'moov.trak.mdia.mdhd'.split('.'))
+			timebase = mdhd.scale
+			duration = mdhd.duration / mdhd.scale
+			print "from MDHD: timebase 1/{} = {:.3f} ms".format(timebase, 1000/timebase)
+			print "from MDHD: duration {:.3f} secs".format(duration)
+
+			# stsd: spatial data
+			stsd = mp4check.select(tree, 'moov.trak.mdia.minf.stbl.stsd'.split('.'))
+			for atom in stsd:
+				if atom.format == 'rle ':
+					width,height = atom.size
+					ppih,ppiv = atom.ppi
+					print "from STSD: {} x {} pixels, {} x {} ppi".format(width, height, ppih, ppiv)
+
+					pixfmt = {24: 'rgb24', 32: 'argb'}[atom.pixeldepth]
+					print "from STSD: {} bpp -> using {}".format(atom.pixeldepth, pixfmt)
+
+			# STTS: temporal data
+			stts = mp4check.select(tree, 'moov.trak.mdia.minf.stbl.stts'.split('.'))
+			_,fdur = max(stts) # frame duration of most frames
+			totalframes = sum(fcnt for fcnt,fdur in stts)
+			fps = timebase / fdur
+			print "from STTS: frame duration {:.3f} ms -> {:.3f} fps".format(1000*fdur/timebase, fps)
+			print "from STTS: {} frames indicated".format(totalframes)
+
+		except ImportError:
+			print "can't import mp4check to dissect source video file"
+
+		except Exception, e:
+			print "mp4check failed to dissect source video file"
+			print e
+
+	if totalframes is None:
+		print "traversing chunks...",
+		totalframes = ilen(get_chunks(mdat.copy()))
+		print "{} chunks/frames found".format(totalframes)
+
+	# command line argument handling (override)
+
 	if args.size:
 		width, height = map(int, args.size.split('x'))
-	else:
-		width = height = 0
 
 	width  = width or 4096
 	height = height or 2048
 
-	pixfmt = args.pixfmt
+	if args.fps:
+		fps = args.fps
+
+	if not fps:
+		fps = 25.0
+
+	print "assuming {} fps".format(fps)
+
+	if not pixfmt:
+		pixfmt = 'argb'
+
 	assert pixfmt in pixfmts
 	nchannels = pixfmts[pixfmt]
 	print "decoding as {}, {} bpp".format(pixfmt, 8*nchannels)
 
 
-	buf = FileBuffer(infname)
-	
-	(mdat,) = mp4select.select("mdat", buf)
-
 	frame = np.zeros((height, width, nchannels), dtype=np.uint8)
-
-	fps = args.fps
-
-	print "assuming {} fps".format(fps)
 
 	if not args.headless:
 		cv2.namedWindow("display", cv2.WINDOW_NORMAL)
@@ -209,7 +271,13 @@ if __name__ == '__main__':
 	framecount = 0
 	dobreak = False
 	for chunk in get_chunks(mdat):
-		print "decoding frame {} @ {:d}:{:02d}:{:06.3f}".format(framecount, *tohms(framecount / fps))
+		print "decoding {:.2%}, {} / {}, {}, {} bytes".format(
+			(framecount+1) / totalframes if totalframes else 0,
+			framecount,
+			totalframes or '?',
+			"{:d}:{:02d}:{:06.3f}".format(*tohms(framecount / fps)),
+			len(chunk)
+		)
 		try:
 			(mx, my, isfull) = decode_chunk(frame, chunk, update=True)
 		except Exception, e:
