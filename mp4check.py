@@ -263,12 +263,12 @@ def parse_tkhd(type, offset, content, path):
 	mtime = mactime(content >> (">Q" if (version == 1) else ">I"))
 
 	track_id = (content >> ">i")
-	print "reserved", (content >> ">i")
+	reserved = (content >> ">i")
 
 	# in time units
 	duration = (content >> (">Q" if (version == 1) else ">I"))
 
-	print "reserved", (content >> ">i")
+	reserved = (content >> ">i")
 
 	assert (content >> ">i") == 0
 
@@ -284,7 +284,7 @@ def parse_tkhd(type, offset, content, path):
 
 	frame_size = [float(content >> ">i") / 2**16 for _ in xrange(2)]
 
-	print content.pos, len(content), repr(content[content.pos:])
+	#print content.pos, len(content), repr(content[content.pos:])
 
 	return Record(
 		version=version,
@@ -378,9 +378,7 @@ def parse_stsd(type, offset, content, path):
 	# https://developer.apple.com/library/mac/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html
 
 	version = nibbles(content >> ">B", 2)
-
 	flags = byteint(content >> ">BBB")
-
 	numdescr = (content >> ">I")
 
 	descriptions = []
@@ -389,71 +387,80 @@ def parse_stsd(type, offset, content, path):
 		start = content.pos
 		descrlen = (content >> ">I")
 		descrformat = (content >> ">4s")
-		subcontent = content[start:start+descrlen]
+		data = content[content.pos:start+descrlen]
 		content.pos += descrlen
 
-		descriptions.append(Record(format=descrformat, data=subcontent))
-		# TODO: richtig an den parser schicken
+		# https://developer.apple.com/library/content/documentation/QuickTime/QTFF/QTFFChap2/qtff2.html#//apple_ref/doc/uid/TP40000939-CH204-61112
+		reserved = (data >> ">6B")
+		dataref = (data >> ">H")
 
+		# https://developer.apple.com/library/content/documentation/QuickTime/QTFF/QTFFChap3/qtff3.html#//apple_ref/doc/uid/TP40000939-CH205-74522
+		version, revision = (data >> ">HH")
+		assert version == 0 and revision == 0
+		vendor = (data >> ">4s") # FFMP
 
-		# res = Record()
+		record = Record(
+			format = descrformat,
+			dataref = dataref,
+			vendor = vendor,
+		)
+		descriptions.append(record)
 
-		# assert (content >> ">6B") == (0,0,0,0,0,0)
+		if descrformat in ('rle ', 'mp4v', 'avc1', 'encv', 's263'):
+			(
+				record.quality_temporal,
+				record.quality_spatial
+			) = (data >> ">II") # 0..1024
 
-		# res.data_ref = (content >> ">H")
+			width, height = (data >> ">HH")
+			record.size = (width, height)
 
-		# if res.format in ('mp4v', 'avc1', 'encv', 's263'):
-		# 	res.enc_version = nibbles(content >> ">H", 4)
-		# 	res.enc_rev     = nibbles(content >> ">H", 4)
-		# 	res.enc_vendor  = (content >> ">4s")
+			ppih, ppiv = (data >> ">II")
+			record.ppi = (ppih * 2**-16, ppiv * 2**-16)
 
-		# 	res.video_temp_quali     = (content >> ">I")
-		# 	res.video_spatial_quali  = (content >> ">I")
+			datasize = (data >> ">I")
+			assert datasize == 0
 
-		# 	res.video_frame_pixel_size = (content >> ">HH")
+			frames_per_sample = (data >> ">H")
+			record.frames_per_sample = frames_per_sample
 
-		# 	res.video_resolution = [float(v) / 2**16 for v in (content >> ">II")]
+			compressor_name = (data >> "32p")
+			record.compressor_name = compressor_name
 
-		# 	assert (content >> ">i") == 0 # qt video data size
-		# 	assert (content >> ">H") == 1 # video frame count
+			pixeldepth = (data >> ">H")
+			is_monochrome = (pixeldepth > 32)
+			if is_monochrome:
+				pixeldepth -= 32
+			record.is_monochrome = is_monochrome
+			record.pixeldepth = pixeldepth
 
-		# 	encnamelen = (content >> ">B")
-		# 	res.video_encoder_name = (content >> ">31s")[:encnamelen]
+			colortableid = (data >> ">h")
+			assert colortableid == -1
 
-		# 	video_pixel_depth = (content >> ">H")
-		# 	is_bw = (video_pixel_depth > 32)
-		# 	if is_bw: video_pixel_depth -= 32
-		# 	res.video_pixel_depth = "{0} bit {1}".format(
-		# 		video_pixel_depth, 
-		# 		"gray" if is_bw else "color")
+			# a 'fiel' atom might follow, 10 bytes total, contains 8u field count (1), u8 field order
+			# TODO: remainder auch parsen
 
-		# 	res.qt_video_color_table_id = (content >> ">h")
+		elif descrformat in ('mp4a', 'enca', 'samr', 'sawb'):
+			pass
+			# 	res.enc_version = nibbles(content >> ">H", 4)
+			# 	res.enc_rev     = nibbles(content >> ">H", 4)
+			# 	res.enc_vendor  = (content >> ">4s")
 
-		# elif res.format in ('mp4a', 'enca', 'samr', 'sawb'):
-		# 	res.enc_version = nibbles(content >> ">H", 4)
-		# 	res.enc_rev     = nibbles(content >> ">H", 4)
-		# 	res.enc_vendor  = (content >> ">4s")
+			# 	res.audio_channels = (content >> ">H")
+			# 	res.audio_sample_size = (content >> ">H")
+			# 	res.qt_audio_compression_id = (content >> ">h")
 
-		# 	res.audio_channels = (content >> ">H")
-		# 	res.audio_sample_size = (content >> ">H")
-		# 	res.qt_audio_compression_id = (content >> ">h")
+			# 	assert (content >> ">h") == 0 # qt_audio_packet_size
 
-		# 	assert (content >> ">h") == 0 # qt_audio_packet_size
+			# 	res.audio_sample_rate = float(content >> ">I") / 2**16
 
-		# 	res.audio_sample_rate = float(content >> ">I") / 2**16
+			# elif res.format in ('mp4s', 'encs'):
+			# 	pass
 
-		# elif res.format in ('mp4s', 'encs'):
-		# 	pass
+			# res.remainder = content[content.pos:]
 
-		# res.remainder = content[content.pos:]
-
-		# return res
-
-	# return Record(
-	# 	version=version,
-	# 	flags=flags,
-	# 	descriptions=descriptions
-	# )
+		remainder = data[data.pos:]
+		record.remainder = remainder
 
 	return descriptions
 
@@ -509,6 +516,24 @@ def parse_stss(type, offset, content, path):
 		version = version,
 		chunks = chunks
 	)
+
+@handler('stts')
+def parse_stss(type, offset, content, path):
+	# http://wiki.multimedia.cx/index.php?title=QuickTime_container#stss
+	
+	version = (content >> '>B')
+	flags   = (content >> ">BBB")
+	count   = (content >> ">I")
+
+	assert version == 0
+	assert flags == (0,0,0)
+
+	entries = [
+		(content >> ">II") # count, duration in units of mdhd.scale
+		for i in xrange(count)
+	]
+
+	return entries
 
 
 @handler('stsz')
