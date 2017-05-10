@@ -5,7 +5,6 @@ import os, sys
 import struct
 import pprint; pp = pprint.pprint
 import glob
-import array
 import ctypes
 import time, datetime, calendar
 import numpy as np
@@ -396,17 +395,17 @@ def parse_stsd(type, offset, content, path):
 
 		# https://developer.apple.com/library/content/documentation/QuickTime/QTFF/QTFFChap3/qtff3.html#//apple_ref/doc/uid/TP40000939-CH205-74522
 		version, revision = (data >> ">HH")
-		assert version == 0 and revision == 0
 		vendor = (data >> ">4s") # FFMP
 
 		record = Record(
 			format = descrformat,
 			dataref = dataref,
 			vendor = vendor,
+			version = (version, revision),
 		)
 		descriptions.append(record)
 
-		if descrformat in ('rle ', 'mp4v', 'avc1', 'encv', 's263'):
+		if descrformat in ('rle ',): # 'mp4v', 'avc1', 'encv', 's263'):
 			(
 				record.quality_temporal,
 				record.quality_spatial
@@ -437,22 +436,52 @@ def parse_stsd(type, offset, content, path):
 			colortableid = (data >> ">h")
 			assert colortableid == -1
 
-			# a 'fiel' atom might follow, 10 bytes total, contains 8u field count (1), u8 field order
-			# TODO: remainder auch parsen
+			if data.read(8) == '\x00\x00\x00\x0Afiel':
+				record.fields = (data >> ">BB")
 
-		elif descrformat in ('mp4a', 'enca', 'samr', 'sawb'):
+		elif descrformat in ('mp4a',): # 'enca', 'samr', 'sawb'):
 			pass
-			# 	res.enc_version = nibbles(content >> ">H", 4)
-			# 	res.enc_rev     = nibbles(content >> ">H", 4)
-			# 	res.enc_vendor  = (content >> ">4s")
 
-			# 	res.audio_channels = (content >> ">H")
-			# 	res.audio_sample_size = (content >> ">H")
-			# 	res.qt_audio_compression_id = (content >> ">h")
+			if record.version[0] == 2:
+				assert (data >> ">H") == 3
+				assert (data >> ">H") == 16
+				assert (data >> ">h") == -2
+				assert (data >> ">h") == 0
+				assert (data >> ">I") == 0x10000
 
-			# 	assert (content >> ">h") == 0 # qt_audio_packet_size
+				record.sizeOfStructOnly   = (data >> ">I")
+				record.audioSampleRate    = (data >> ">d")
+				record.numAudioChannels   = (data >> ">I")
+				assert (data >> ">I") == 0x7F000000
 
-			# 	res.audio_sample_rate = float(content >> ">I") / 2**16
+				record.constBitsPerChannel = (data >> ">I")
+				record.formatSpecificFlags = (data >> ">I")
+				record.constBytesPerAudioPacket = (data >> ">I")
+				record.constLPCMFramesPerAudioPacket = (data >> ">I")
+
+			elif record.version[0] == 1:
+				record.audio_channels = (data >> ">H")
+				record.audio_sample_size = (data >> ">H")
+				record.audio_compression_id = (data >> ">h")
+				record.audio_packet_size = (data >> ">h")
+				record.audio_sample_rate = (data >> ">I") * 2**-16
+
+				record.samples_per_packet = (data >> ">I")
+				record.bytes_per_packet   = (data >> ">I")
+				record.bytes_per_frame    = (data >> ">I")
+				record.bytes_per_sample   = (data >> ">I")
+
+			elif record.version[0] == 0:
+				record.audio_channels = (data >> ">H")
+				record.audio_sample_size = (data >> ">H")
+				record.audio_compression_id = (data >> ">h")
+				record.audio_packet_size = (data >> ">h")
+				record.audio_sample_rate = (data >> ">I") * 2**-16
+
+			else:
+				assert False, "STSD {} version {} unexpected".format(record.format, record.version)
+
+
 
 			# elif res.format in ('mp4s', 'encs'):
 			# 	pass
@@ -460,7 +489,8 @@ def parse_stsd(type, offset, content, path):
 			# res.remainder = content[content.pos:]
 
 		remainder = data[data.pos:]
-		record.remainder = remainder
+		if remainder:
+			record.remainder = remainder
 
 	return descriptions
 
@@ -484,9 +514,7 @@ def parse_stco(type, offset, content, path):
 
 	assert flags == (0,0,0)
 	
-	offsets = array.array("I", content.read())
-	offsets.byteswap()
-	offsets = abbrevlist(offsets)
+	offsets = np.fromstring(content.read(), dtype=np.uint32).byteswap()
 	assert (len(offsets) == count)
 	
 	return Record(
@@ -507,9 +535,7 @@ def parse_stss(type, offset, content, path):
 	
 	assert content.pos + 4*count == content.len
 
-	chunks = array.array("I", content.read())
-	chunks.byteswap()
-	chunks = abbrevlist(chunks)
+	chunks = np.fromstring(content.read(), dtype=np.uint32).byteswap()
 	assert (len(chunks) == count)
 	
 	return Record(
@@ -528,10 +554,9 @@ def parse_stss(type, offset, content, path):
 	assert version == 0
 	assert flags == (0,0,0)
 
-	entries = [
-		(content >> ">II") # count, duration in units of mdhd.scale
-		for i in xrange(count)
-	]
+	# (count,duration) tuples
+	entries = np.fromstring(content.read(), dtype=np.uint32).byteswap().reshape((-1, 2))
+	assert len(entries) == count
 
 	return entries
 
@@ -548,9 +573,7 @@ def parse_stsz(type, offset, content, path):
 	assert flags == (0,0,0)
 
 	if samplesize == 0: # different sizes
-		sizes = array.array("I", content.read())
-		sizes.byteswap()
-		sizes = abbrevlist(sizes)
+		sizes = np.fromstring(content.read(), dtype=np.uint32).byteswap()
 		assert(len(sizes) == count)
 
 	else: # all same size
