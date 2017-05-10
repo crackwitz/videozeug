@@ -2,6 +2,7 @@
 import os
 import sys
 import pprint; pp = pprint.pprint
+import argparse
 
 import cv2
 import numpy as np
@@ -10,12 +11,18 @@ from filebuffer import *
 import mp4select
 import ffwriter
 
-# http://wiki.multimedia.cx/index.php?title=Apple_QuickTime_RLE
+# https://wiki.multimedia.cx/index.php?title=Apple_QuickTime_RLE
 
 def redraw(frame):
+	if args.headless:
+		return
+
+	# reverse for opencv
 	cv2.imshow("display", (frame[:,:,::-1]))
+
 	#cv2.imshow("display", cv2.pyrDown(frame[:,:,::-1]))
 	#cv2.imshow("alpha", cv2.pyrDown(frame[:,:,0]))
+
 	while True:
 		key = cv2.waitKey(1)
 		if key == -1:
@@ -27,19 +34,24 @@ def get_chunks(buffer):
 	while buffer.pos < len(buffer):
 		chunksize = (buffer >> ">I")
 		chunk = buffer[buffer.pos : buffer.pos - 4 + chunksize]
+		header = chunk[0:2][">H"]
+		#print "chunk @ {:x}, len {:08x}, header {:04x}".format(buffer.pos, chunksize, header)
 		buffer.pos += chunksize-4
 		yield chunk
 
 
 def decode_chunk(frame, chunk, update=False):
+	pixfmtstr = {'argb': '>BBBB', 'rgb24': '>BBB'}[pixfmt]
+
 	chunk = chunk.copy()
 	xmax = ymax = 0
-	header = (chunk >> ">H")
+	header = (chunk >> ">H") # header 0x0008 means decode starting at some line other than 0
 
 	#print "size, header:", len(chunk)+4, header
 
 	if header & 0x0008:
 		(firstline, _, numlines, _) = (chunk >> ">HHHH")
+		#print "header bit 3 set: update {} + {}".format(firstline, numlines)
 	else:
 		firstline = 0
 		numlines = None
@@ -52,7 +64,7 @@ def decode_chunk(frame, chunk, update=False):
 	skipused = False
 
 	state = 0
-	# 0: read skip code
+	# 0: read skip code (how many pixels to skip into the current line)
 	# 1: read RLE code
 
 	#import pdb; pdb.set_trace()
@@ -61,7 +73,7 @@ def decode_chunk(frame, chunk, update=False):
 	dispdelta = 20
 	linecount = 0
 	while True:
-		#print "pos", chunk.pos
+		#print "pos", chunk.pos, 'state', state
 		
 		if state == 0:
 			skipcode = (chunk >> ">B")
@@ -102,21 +114,28 @@ def decode_chunk(frame, chunk, update=False):
 				continue
 
 			elif rlecode > 0:
-				pixels = [(chunk >> ">BBBB") for i in xrange(rlecode)]
+				pixels = [(chunk >> pixfmtstr) for i in xrange(rlecode)]
 				frame[py,px : px + rlecode] = pixels
 				px += rlecode
 				xmax = max(xmax, px)
 
 			elif rlecode < -1:
-				pixel = (chunk >> ">BBBB")
-				frame[py, px : px-rlecode] = pixel
-				px += -rlecode
+				repeat = -rlecode
+				pixel = (chunk >> pixfmtstr)
+				frame[py, px : px+repeat] = pixel
+				px += repeat
 				xmax = max(xmax, px)
+
+			else:
+				assert False, "incomplete switch on rlecode {}".format(rlecode)
 
 
 		else:
-			assert False
+			assert False, "wrong state value {}!".format(state)
 	
+	# assert that whole chunk has been decoded
+	assert chunk.pos == len(chunk), "chunk done after {} of {} bytes".format(chunk.pos, len(chunk))
+
 	if update:
 		redraw(frame)
 	
@@ -127,22 +146,54 @@ def decode_chunk(frame, chunk, update=False):
 	
 	return (xmax, ymax, is_fullframe)
 
+pixfmts = { # -> channel/byte count
+	'argb': 4,
+	'rgb24': 3,
+}
+
 if __name__ == '__main__':
-	cv2.namedWindow("display", cv2.WINDOW_NORMAL)
+	parser = argparse.ArgumentParser()
+	parser.add_argument("infile", type=str, help="input video file")
+	parser.add_argument("outfile", type=str, nargs='?', default=None, help="output video file")
+	parser.add_argument('--size', dest='size', type=str, default=None, nargs=1,  metavar="WxH", help="initial resolution")
+	parser.add_argument('--pixfmt', dest='pixfmt', type=str, default='argb', nargs=1, help="aupported: argb, rgb24")
+	parser.add_argument('--fps', dest='fps', type=float, default=25, nargs=1, help="frames per second")
+	parser.add_argument('--headless', dest='headless', help="don't show output window")
 
-	width, height = sys.argv[1:3]
-	width = int(width) or 4096
-	height = int(height) or 2048
+	args = parser.parse_args()
 
-	infname = sys.argv[3]
+	infname = args.infile
+	outfname = args.outfile
 
-	outvid = sys.argv[4] if len(sys.argv[1:]) > 3 else None
+	if outfname is None:
+		outfname = "{}-decoded.mov".format(*os.path.splitext(infname))
+
+	if args.size:
+		width, height = map(int, args.size.split('x'))
+	else:
+		width = height = 0
+
+	width  = width or 4096
+	height = height or 2048
+
+	pixfmt = args.pixfmt
+	assert pixfmt in pixfmts
+	nchannels = pixfmts[pixfmt]
+	print "decoding as {}, {} bpp".format(pixfmt, 8*nchannels)
+
 
 	buf = FileBuffer(infname)
 	
 	(mdat,) = mp4select.select("mdat", buf)
-	
-	frame = np.zeros((height, width, 4), dtype=np.uint8)
+
+	frame = np.zeros((height, width, nchannels), dtype=np.uint8)
+
+	fps = args.fps
+
+	if not args.headless:
+		cv2.namedWindow("display", cv2.WINDOW_NORMAL)
+
+	outfile = None
 
 	# iterate chunks
 	framecount = 0
@@ -162,12 +213,12 @@ if __name__ == '__main__':
 			(width, height) = (mx, my)
 			frame = frame[:height, :width].copy()
 
-			if outvid is not None:
-				outvid = ffwriter.FFWriter(outvid, 25, (width, height), pixfmt='argb', codec='qtrle', moreflags='-g 1500')
-				assert outvid.isOpened()
+			if (outfname is not None) and (outfile is None):
+				outfile = ffwriter.FFWriter(outfname, fps, (width, height), pixfmt=pixfmt, codec='qtrle', moreflags='-g {}'.format(60*fps))
+				assert outfile.isOpened()
 
-		if outvid:
-			outvid.write(frame)
+		if outfile:
+			outfile.write(frame)
 
 		framecount += 1
 
