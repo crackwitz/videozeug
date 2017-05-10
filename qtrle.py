@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+from __future__ import division
 import os
 import sys
 import pprint; pp = pprint.pprint
@@ -28,6 +29,7 @@ def redraw(frame):
 		if key == -1:
 			break
 		if key == 27:
+			cv2.destroyWindow("display")
 			sys.exit(0)
 
 def get_chunks(buffer):
@@ -69,7 +71,7 @@ def decode_chunk(frame, chunk, update=False):
 
 	#import pdb; pdb.set_trace()
 	
-	dispcount = 0
+	linecount = 0
 	dispdelta = 20
 	linecount = 0
 	while True:
@@ -106,8 +108,8 @@ def decode_chunk(frame, chunk, update=False):
 				linecount += 1
 
 				#print "y", py
-				dispcount += 1
-				if update and (dispcount % dispdelta == 0):
+				if update and (linecount % dispdelta == 0):
+					sys.stdout.write("{} of {} lines\r".format(linecount, numlines or height))
 					redraw(frame)
 
 				state = 0
@@ -136,7 +138,7 @@ def decode_chunk(frame, chunk, update=False):
 	# assert that whole chunk has been decoded
 	assert chunk.pos == len(chunk), "chunk done after {} of {} bytes".format(chunk.pos, len(chunk))
 
-	if update:
+	if update and linecount > 0:
 		redraw(frame)
 	
 	is_fullframe = (firstline == 0 and (linecount == frame.shape[0]) and not skipused)
@@ -145,6 +147,12 @@ def decode_chunk(frame, chunk, update=False):
 		print "that was a FULL FRAME"
 	
 	return (xmax, ymax, is_fullframe)
+
+def tohms(secs):
+	hours, secs = divmod(secs, 3600)
+	minutes, secs = divmod(secs, 60)
+	return (int(hours), int(minutes), secs)
+
 
 pixfmts = { # -> channel/byte count
 	'argb': 4,
@@ -155,10 +163,10 @@ if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument("infile", type=str, help="input video file")
 	parser.add_argument("outfile", type=str, nargs='?', default=None, help="output video file")
-	parser.add_argument('--size', dest='size', type=str, default=None, nargs=1,  metavar="WxH", help="initial resolution")
-	parser.add_argument('--pixfmt', dest='pixfmt', type=str, default='argb', nargs=1, help="aupported: argb, rgb24")
+	parser.add_argument('--size', dest='size', type=str, default=None, metavar="WxH", help="initial resolution")
+	parser.add_argument('--pixfmt', dest='pixfmt', type=str, default='argb', help="aupported: argb, rgb24")
 	parser.add_argument('--fps', dest='fps', type=float, default=25, nargs=1, help="frames per second")
-	parser.add_argument('--headless', dest='headless', help="don't show output window")
+	parser.add_argument('--headless', dest='headless', action="store_true", help="don't show output window")
 
 	args = parser.parse_args()
 
@@ -190,6 +198,8 @@ if __name__ == '__main__':
 
 	fps = args.fps
 
+	print "assuming {} fps".format(fps)
+
 	if not args.headless:
 		cv2.namedWindow("display", cv2.WINDOW_NORMAL)
 
@@ -199,7 +209,7 @@ if __name__ == '__main__':
 	framecount = 0
 	dobreak = False
 	for chunk in get_chunks(mdat):
-		print "decoding frame", framecount
+		print "decoding frame {} @ {:d}:{:02d}:{:06.3f}".format(framecount, *tohms(framecount / fps))
 		try:
 			(mx, my, isfull) = decode_chunk(frame, chunk, update=True)
 		except Exception, e:
